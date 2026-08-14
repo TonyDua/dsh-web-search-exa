@@ -1,18 +1,17 @@
 # The dsh-web-search-exa bundle patch.
 #
-# Inserts the zero-config Exa search provider into the profile and selects it
-# as the web seam's active search provider. The row's `config` replaces the
-# targeted row's whole config (patch semantics: last write wins per row), so
-# users who customize `web` in their own profile cordis.patch.yml keep the
-# last word — their patch applies after bundle patches.
+# Inserts the zero-config Exa search provider into the profile. It must NOT
+# re-define rows owned by official bundle patches (e.g. dsh-base's `- id: web`
+# row): duplicate ids inside the bundle group fail the loader, while the
+# user's own profile cordis.patch.yml (applied last) may override rows by id.
+#
+# Selection: with no API key the official deepseek provider is unavailable, so
+# the seam auto-selects this provider (zero-config). Keyed users who prefer Exa
+# select it explicitly in their own profile patch or via
+# DSH_WEB_SEARCH_PROVIDER=exa (see README).
 - insert:
     - id: web-search-exa
       name: '@tonydua/dsh-web-search-exa'
       config:
         apiKeyEnv: EXA_API_KEY
         # providerId: exa-anon  # uncomment to coexist with the official package
-
-    - id: web
-      name: '@deepseek-ai/dsh-web'
-      config:
-        searchProvider: exa

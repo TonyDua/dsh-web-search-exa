@@ -53,13 +53,22 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 
 ## 安装（装入 dsh profile）
 
-**一条命令从 npm 安装**（v0.1.2+ 自带 `dsh.bundle` manifest——bundle patch 会自动插入 provider 行并把它设为 web seam 的搜索提供方，无需手动改 patch）：
+**一条命令从 npm 安装**（v0.1.3+ 自带 `dsh.bundle` manifest——bundle patch 会自动插入 provider 行，无需手动改 patch）：
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
 ```
 
-重启 `dsh web` 生效。你自己的 `$DSH_HOME/profiles/web/cordis.patch.yml` 在 bundle patch 之后应用，对 `web` 行的任何自定义仍以你的为准。
+重启 `dsh web` 生效。**无 API key 时**官方 DeepSeek 搜索提供方不可用，seam 会自动选中本插件——完全零配置。**配了 key 时**，需在你的 `$DSH_HOME/profiles/web/cordis.patch.yml`（在 bundle patch 之后应用）里显式选中 Exa：
+
+```yaml
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: exa
+```
+
+…或用环境变量 `$DSH_WEB_SEARCH_PROVIDER=exa` 在运行时选中。
 
 **本地开发目录：**
 

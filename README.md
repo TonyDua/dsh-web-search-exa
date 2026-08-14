@@ -73,17 +73,26 @@ key (which also switches to the REST path automatically).
 
 ## Installation (into a dsh profile)
 
-**One command from npm** (v0.1.2+ ships the `dsh.bundle` manifest — the bundle
-patch inserts the provider row and selects it as the web seam's search
-provider, so no manual patch editing is needed):
+**One command from npm** (v0.1.3+ ships the `dsh.bundle` manifest — the bundle
+patch inserts the provider row, so no manual patch editing is needed):
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
 ```
 
-Restart `dsh web`. Your own `$DSH_HOME/profiles/web/cordis.patch.yml` is
-applied after bundle patches, so any customization of the `web` row keeps the
-last word.
+Restart `dsh web`. **Without an API key** the official DeepSeek search
+provider is unavailable, so the seam auto-selects this provider — fully
+zero-config. **With a key configured**, select Exa explicitly in your own
+`$DSH_HOME/profiles/web/cordis.patch.yml` (applied after bundle patches):
+
+```yaml
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: exa
+```
+
+…or at runtime with the environment variable `$DSH_WEB_SEARCH_PROVIDER=exa`.
 
 **Local development checkout:**
 

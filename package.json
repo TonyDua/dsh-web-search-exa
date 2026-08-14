@@ -1,7 +1,7 @@
 {
   "name": "@tonydua/dsh-web-search-exa",
   "description": "Zero-config Exa web search provider for DeepSeek Harness (dsh): keyless anonymous MCP fallback (mcp.exa.ai/mcp) plus keyed REST search — a drop-in WebSearchProvider for the ctx.web seam, no API key required.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "keywords": [
     "deepseek-harness",
     "dsh",

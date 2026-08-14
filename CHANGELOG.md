@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-08-14
+
+### Fixed
+
+- **Bundle patch no longer re-defines the `web` row** (`duplicate loader entry
+  id: web` boot failure when installed via `dsh plugin add`): dsh-base's
+  official patch already owns `- id: web`, and duplicate ids inside the bundle
+  group fail the loader (only the user's own profile patch may override rows
+  by id). The bundle now inserts only the `web-search-exa` provider row;
+  keyless installs auto-select it, keyed users select it explicitly (README).
+
 ## [0.1.2] - 2026-08-14
 
 ### Added
