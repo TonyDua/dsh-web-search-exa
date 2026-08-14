@@ -1,26 +1,41 @@
 # @tonydua/dsh-web-search-exa
 
-> **Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh).**
+**English** | [简体中文](README.zh.md)
 
-An Exa-backed `WebSearchProvider` for the DeepSeek Harness web capability seam
-(`ctx.web`), with an **anonymous** fallback: when no API key is configured,
-search routes through Exa's hosted MCP server (`https://mcp.exa.ai/mcp`) via
-JSON-RPC 2.0 with **no credentials at all** — Exa's documented unauthenticated
-public MCP fallback (rate-limited). With an `EXA_API_KEY`, the lighter REST
-endpoint is used instead.
+[![npm version](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![npm downloads](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
+[![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
 
-This is an implementation package: it registers a provider INTO `ctx.web`
-(`inject: ['web']`) and owns no model-facing tools (those belong to
-`@deepseek-ai/dsh-tool-web`). The model-facing `web_search` / `web_fetch` tools,
-their prompt sections, and the Web result cards are unchanged.
+> Zero-config [Exa](https://exa.ai) web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh):
+> **no API key required** — a `WebSearchProvider` for the `ctx.web` seam with an
+> anonymous MCP fallback plus a keyed REST path.
 
-## Why this package exists (difference from the official one)
+Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Harness (dsh).
+
+## Features
+
+- 🆓 **Zero-config, keyless by default** — searches route through Exa's hosted MCP
+  server (`mcp.exa.ai/mcp`) with **no credentials at all** (Exa's documented
+  unauthenticated public MCP, rate-limited).
+- 🔑 **Keyed REST upgrade** — set `EXA_API_KEY` and it automatically switches to
+  Exa's `POST /search` REST API (higher limits, no behavior change).
+- 🔌 **Drop-in provider** — registers into the dsh `ctx.web` seam; the existing
+  model-facing `web_search` / `web_fetch` tools, prompt sections, and result
+  cards work unchanged.
+- 🎛️ **`providerId` switch** — can coexist with the official
+  `@deepseek-ai/dsh-web-search-exa` package in one profile (no duplicate-id
+  collisions, no silent overrides).
+- 📦 **npm-publishable** — MIT, ESM, bundled types, `files` limited to `lib/`.
+
+## Why this package exists (vs. the official one)
 
 The DeepSeek Harness ships an official Exa provider,
 [`@deepseek-ai/dsh-web-search-exa`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-exa).
-This package is the **zero-config variant**: it adds the anonymous MCP fallback
-the official one does not have, and keeps the same keyed REST behavior when an
-API key is configured.
+This package is its **zero-config variant**: it adds the anonymous MCP fallback
+the official one does not have, and keeps the same keyed REST behavior.
 
 | | Official `@deepseek-ai/dsh-web-search-exa` | This package `@tonydua/dsh-web-search-exa` |
 |---|---|---|
@@ -32,21 +47,15 @@ API key is configured.
 | Cordis plugin name | `web-search-exa` | `web-search-exa` |
 | Config keys | `apiKey`, `baseURL`, `searchType`, `numResults`, `highlightsPerResult` | `apiKey`, `apiKeyEnv`, `apiURL`, `mcpURL`, `searchType`, `numResults`, `highlightsPerResult`, `providerId` |
 
-## Acknowledgements
+## Which one should I use?
 
-The anonymous MCP integration follows the `web_search` implementation in
-[can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) (`packages/coding-agent/src/web/search/providers/exa.ts`
-and `src/exa/mcp-client.ts`) and the
-[`@oh-my-pi/exa`](https://www.npmjs.com/package/@oh-my-pi/exa) plugin: same
-"REST when a key exists, credential-free `mcp.exa.ai/mcp` otherwise" strategy,
-same `x-exa-source` attribution header, same `Title:`-section response parsing.
-Thanks to the oh-my-pi (omp) project for pioneering the zero-config Exa
-integration.
-
-Thanks also to **[Exa](https://exa.ai)** for providing and operating the
-**free, unauthenticated hosted MCP server** (`mcp.exa.ai/mcp`) that makes this
-package's zero-config default possible. Exa's hosted MCP is an official Exa
-product; anonymous usage is rate-limited (see Known limitations).
+- **You have an `EXA_API_KEY` and want the officially maintained package** →
+  use `@deepseek-ai/dsh-web-search-exa`. It is the canonical implementation.
+- **You want to try Exa search with zero setup, no key, no cost commitment** →
+  use this package. It degrades gracefully: anonymous MCP by default, REST
+  automatically when a key appears.
+- **You want both** → install both and use the `providerId` switch (see
+  [Coexistence](#coexistence-with-the-official-package)).
 
 ## How it works
 
@@ -61,6 +70,49 @@ The anonymous MCP path sends no credentials; attribution rides the
 enforces `maxResults` on the way back. Anonymous usage is rate-limited by Exa:
 an HTTP 429 surfaces as a `WEB_PROVIDER_ERROR` with a hint to configure an API
 key (which also switches to the REST path automatically).
+
+## Installation (into a dsh profile)
+
+```powershell
+dsh plugin --profile web add ../plugins/dsh-web-search-exa
+```
+
+Then enable the provider and select it. Either merge into
+`$DSH_HOME/profiles/web/cordis.patch.yml` (persistent):
+
+```yaml
+- id: web-search-exa
+  name: '@tonydua/dsh-web-search-exa'
+  config:
+    apiKeyEnv: EXA_API_KEY
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: exa
+```
+
+…or pass `patches/exa-anon-search.patch.yml` as an overlay:
+
+```powershell
+dsh --profile web --patch patches/exa-anon-search.patch.yml
+```
+
+Alternatively, select the provider at runtime with the environment variable
+`$DSH_WEB_SEARCH_PROVIDER=exa` (no config edit needed).
+
+Restart `dsh web` for changes to take effect. The existing model-facing
+`web_search` tool then routes through this provider — no tool config changes.
+
+### Runtime singleton compatibility
+
+`@deepseek-ai/dsh-tools` is a dsh runtime singleton and must resolve to one
+physical package instance in a profile. This provider does not depend on it;
+the requirement belongs to the host profile. If another third-party plugin
+installs `@deepseek-ai/dsh-tools` as a nested regular dependency instead of a
+peer dependency, fix that plugin's dependency declaration or make the profile
+package manager resolve the shared instance before debugging search errors.
+Otherwise dsh's agent loop can fail before the provider is called with an
+error such as `Cannot read properties of undefined (reading 'prepare')`.
 
 ## Configuration
 
@@ -108,51 +160,6 @@ switch:
 Simplest alternative: install only one of the two packages per profile — the
 defaults then work as-is.
 
-## Installation (into a dsh profile)
-
-From this repository:
-
-```powershell
-dsh plugin --profile web add ../plugins/dsh-web-search-exa
-```
-
-Then enable the provider and select it. Either merge into
-`$DSH_HOME/profiles/web/cordis.patch.yml` (persistent):
-
-```yaml
-- id: web-search-exa
-  name: '@tonydua/dsh-web-search-exa'
-  config:
-    apiKeyEnv: EXA_API_KEY
-- id: web
-  name: '@deepseek-ai/dsh-web'
-  config:
-    searchProvider: exa
-```
-
-…or pass `patches/exa-anon-search.patch.yml` as an overlay:
-
-```powershell
-dsh --profile web --patch patches/exa-anon-search.patch.yml
-```
-
-Alternatively, select the provider at runtime with the environment variable
-`$DSH_WEB_SEARCH_PROVIDER=exa` (no config edit needed).
-
-Restart `dsh web` for changes to take effect. The existing model-facing
-`web_search` tool then routes through this provider — no tool config changes.
-
-### Runtime singleton compatibility
-
-`@deepseek-ai/dsh-tools` is a dsh runtime singleton and must resolve to one
-physical package instance in a profile. This provider does not depend on it;
-the requirement belongs to the host profile. If another third-party plugin
-installs `@deepseek-ai/dsh-tools` as a nested regular dependency instead of a
-peer dependency, fix that plugin's dependency declaration or make the profile
-package manager resolve the shared instance before debugging search errors.
-Otherwise dsh's agent loop can fail before the provider is called with an
-error such as `Cannot read properties of undefined (reading 'prepare')`.
-
 ## In the Web panel
 
 **Status: configuration is done in the profile patch layer, not the Web UI —
@@ -183,30 +190,46 @@ plugin namespaces. What is true today:
 fields above become editable live in Settings → Plugins (mirroring how the
 official cards work).
 
-## Open-source notes
+## FAQ
 
-- License: MIT (see `LICENSE`).
-- Repository: <https://github.com/TonyDua/dsh-web-search-exa>.
-- The package is npm-packable: `publishConfig.access: public`, `files` limited
-  to `lib/`, ESM with an `exports` map and bundled type declarations. Run
-  `npm test` and `npm pack --dry-run` before publishing.
-- To publish: `npm login` (against `registry.npmjs.org`, not the npmmirror
-  default in your `.npmrc`), then
-  `npm publish --registry https://registry.npmjs.org --cache <writable-cache>`.
-  The `@tonydua` scope is claimed on first publish by the publishing account.
+**Q: Do I need an Exa API key?**
+No. Without a key the provider uses Exa's free anonymous hosted MCP. With a key
+it uses the REST API for higher limits.
 
-## Known limitations
+**Q: I got HTTP 429 / rate limited.**
+That's Exa's anonymous-MCP rate limit. Configure `EXA_API_KEY` (or the
+`apiKey` field) and the provider switches to the REST path automatically.
 
-- **Anonymous MCP is rate-limited** (HTTP 429 → `WEB_PROVIDER_ERROR` with a
-  hint). Configure `EXA_API_KEY` for higher limits; the provider then uses the
-  REST path automatically.
-- **Snippet-less results are dropped** (seam rule: no portable snippet).
-  Anonymous MCP usually returns full `Text` blocks, which are truncated to
-  `MAX_SNIPPET_CHARS` (500) for the snippet.
-- **Only `query` + result-count controls are exposed**; recency, domain
-  filters, and deep-search modes are not mapped (they can be added later, as
-  the seam's provider-neutral fields evolve).
-- Anonymous MCP responses are parsed from the `Title:`-section text format;
-  structural changes to Exa's hosted MCP output may require a parser update.
-- **No Web UI settings entry yet** — configuration goes through the profile
-  patch layer (see "In the Web panel").
+**Q: Can I run this alongside the official Exa provider?**
+Yes — give this package a distinct `providerId` and select it explicitly
+(see [Coexistence](#coexistence-with-the-official-package)).
+
+**Q: Why don't I see a settings entry in the Web UI?**
+This version registers the `web-search-exa` settings namespace server-side
+only; a UI card is planned for the next version. Configure through
+`cordis.patch.yml` or environment variables for now (see
+[In the Web panel](#in-the-web-panel)).
+
+## Acknowledgements
+
+The anonymous MCP integration follows the `web_search` implementation in
+[can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) (`packages/coding-agent/src/web/search/providers/exa.ts`
+and `src/exa/mcp-client.ts`) and the
+[`@oh-my-pi/exa`](https://www.npmjs.com/package/@oh-my-pi/exa) plugin: same
+"REST when a key exists, credential-free `mcp.exa.ai/mcp` otherwise" strategy,
+same `x-exa-source` attribution header, same `Title:`-section response parsing.
+Thanks to the oh-my-pi (omp) project for pioneering the zero-config Exa
+integration.
+
+Thanks also to **[Exa](https://exa.ai)** for providing and operating the
+**free, unauthenticated hosted MCP server** (`mcp.exa.ai/mcp`) that makes this
+package's zero-config default possible. Exa's hosted MCP is an official Exa
+product; anonymous usage is rate-limited (see FAQ).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for all notable changes.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

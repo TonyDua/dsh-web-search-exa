@@ -1,14 +1,24 @@
 {
   "name": "@tonydua/dsh-web-search-exa",
-  "description": "Exa-backed WebSearchProvider for the DeepSeek Harness web capability seam (ctx.web), with an anonymous MCP fallback — no API key required",
+  "description": "Zero-config Exa web search provider for DeepSeek Harness (dsh): keyless anonymous MCP fallback (mcp.exa.ai/mcp) plus keyed REST search — a drop-in WebSearchProvider for the ctx.web seam, no API key required.",
   "version": "0.1.0",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "cordis",
     "exa",
+    "exa-search",
     "web-search",
-    "anonymous"
+    "websearch",
+    "search-provider",
+    "mcp",
+    "mcp-server",
+    "anonymous",
+    "zero-config",
+    "no-api-key",
+    "deepseek",
+    "llm",
+    "agent"
   ],
   "license": "MIT",
   "repository": {
