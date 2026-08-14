@@ -1,0 +1,53 @@
+{
+  "name": "@tonydua/dsh-web-search-exa",
+  "description": "Exa-backed WebSearchProvider for the DeepSeek Harness web capability seam (ctx.web), with an anonymous MCP fallback — no API key required",
+  "version": "0.1.0",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "exa",
+    "web-search",
+    "anonymous"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TonyDua/dsh-web-search-exa.git"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test test/index.test.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-web": "^0.1.0-rc.6"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-web": "^0.1.0-rc.6"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

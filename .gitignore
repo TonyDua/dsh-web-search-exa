@@ -1,0 +1,12 @@
+# Dependencies (dev-only, never shipped — npm `files` already limits to lib/)
+node_modules/
+
+# Pack artifacts
+*.tgz
+*.tar.gz
+
+# Logs & local state
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
