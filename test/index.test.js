@@ -7,7 +7,7 @@ const baseOptions = {
 	apiKey: "",
 	apiKeyEnv: "__DSH_EXA_TEST_KEY__",
 	apiURL: "https://api.exa.ai/search",
-	mcpURL: "https://mcp.exa.ai/mcp",
+	mcpURL: "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa",
 	searchType: "auto",
 	numResults: 3,
 	highlightsPerResult: 1,
@@ -40,7 +40,49 @@ function mcpResponse(payload) {
 	});
 }
 
-test("anonymous MCP search sends no credentials and maps SSE results", async () => {
+/** One structured entry in the advanced tool's sanitized output. */
+function structuredEntry(overrides = {}) {
+	return {
+		url: "https://example.com",
+		title: "Example",
+		publishedDate: "2026-08-14",
+		highlights: ["A salient result"],
+		...overrides,
+	};
+}
+
+test("anonymous MCP search calls the advanced tool and maps structured JSON", async () => {
+	let call;
+	const result = await withFetch(async (url, init) => {
+		call = { url: String(url), init };
+		return mcpResponse({
+			result: {
+				content: [{ type: "text", text: JSON.stringify({ results: [structuredEntry()] }) }],
+			},
+		});
+	}, () => provider().search({ query: "example" }));
+
+	assert.equal(call.url, "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa");
+	assert.equal(call.init.headers.authorization, undefined);
+	assert.equal(call.init.headers["x-exa-source"], "dsh-anything");
+	const body = JSON.parse(call.init.body);
+	assert.equal(body.params.name, "web_search_advanced_exa");
+	assert.deepEqual(body.params.arguments, {
+		query: "example",
+		numResults: 3,
+		type: "auto",
+		enableHighlights: true,
+		highlightsNumSentences: 1,
+	});
+	assert.deepEqual(result.sources, [{
+		url: "https://example.com",
+		title: "Example",
+		snippet: "A salient result",
+		publishedAt: "2026-08-14",
+	}]);
+});
+
+test("basic tool selection keeps the text-blob path", async () => {
 	let call;
 	const result = await withFetch(async (url, init) => {
 		call = { url: String(url), init };
@@ -52,17 +94,73 @@ test("anonymous MCP search sends no credentials and maps SSE results", async () 
 				}],
 			},
 		});
-	}, () => provider().search({ query: "example" }));
+	}, () => provider({ mcpTool: "web_search_exa" }).search({ query: "example" }));
 
-	assert.equal(call.url, "https://mcp.exa.ai/mcp");
-	assert.equal(call.init.headers.authorization, undefined);
-	assert.equal(call.init.headers["x-exa-source"], "dsh-anything");
-	assert.deepEqual(JSON.parse(call.init.body).params.arguments, { query: "example", numResults: 3 });
+	assert.equal(call.url, "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa");
+	assert.equal(JSON.parse(call.init.body).params.name, "web_search_exa");
 	assert.deepEqual(result.sources, [{
 		url: "https://example.com",
 		title: "Example",
 		snippet: "A useful result",
 		publishedAt: "2026-08-14",
+	}]);
+});
+
+test("custom MCP URLs get the tools query spliced when it is missing", async () => {
+	let url;
+	await withFetch(async (calledUrl, init) => {
+		url = String(calledUrl);
+		return mcpResponse({ result: { content: [] } });
+	}, () => provider({ mcpURL: "https://mcp.example.net/mcp" }).search({ query: "example" }));
+	assert.equal(url, "https://mcp.example.net/mcp?tools=web_search_exa,web_search_advanced_exa");
+});
+
+test("custom MCP URLs with a tools parameter pass through unchanged", async () => {
+	const custom = "https://mcp.example.net/mcp?tools=web_search_exa,web_search_advanced_exa&page=2";
+	let url;
+	await withFetch(async (calledUrl, init) => {
+		url = String(calledUrl);
+		return mcpResponse({ result: { content: [] } });
+	}, () => provider({ mcpURL: custom }).search({ query: "example" }));
+	assert.equal(url, custom);
+});
+
+test("snippet-less and url-less structured entries are dropped", async () => {
+	const result = await withFetch(async () => mcpResponse({
+		result: {
+			content: [{ type: "text", text: JSON.stringify({ results: [
+				{ url: "https://example.com/no-highlight", title: "No highlight" },
+				{ url: "", title: "No URL", highlights: ["highlight"] },
+				structuredEntry(),
+			] }) }],
+		},
+	}), () => provider().search({ query: "example" }));
+	assert.deepEqual(result.sources.map(source => source.url), ["https://example.com"]);
+});
+
+test("anonymous MCP responses larger than 256 KiB are rejected", async () => {
+	await assert.rejects(
+		withFetch(async () => mcpResponse({
+			result: { content: [{ type: "text", text: "x".repeat(256 * 1024 + 1) }] },
+		}), () => provider().search({ query: "example" })),
+		error => error.code === "WEB_PROVIDER_ERROR" && /exceeded 262144 bytes/.test(error.message),
+	);
+});
+
+test("advanced-tool output that is not JSON falls back to section parsing", async () => {
+	const result = await withFetch(async () => mcpResponse({
+		result: {
+			content: [{
+				type: "text",
+				text: "Title: Fallback\nURL: https://example.com/fallback\nPublished: 2026-08-15\nHighlights:\nFrom sections",
+			}],
+		},
+	}), () => provider().search({ query: "example" }));
+	assert.deepEqual(result.sources, [{
+		url: "https://example.com/fallback",
+		title: "Fallback",
+		snippet: "From sections",
+		publishedAt: "2026-08-15",
 	}]);
 });
 

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- **Structured anonymous search via `web_search_advanced_exa`** (new default): the anonymous MCP path now calls Exa's advanced tool, whose text content is a sanitized JSON search response (the REST envelope, `{ results: [...] }`). Results map onto the seam vocabulary (`url`, `title`, `snippet`, `publishedAt`) without text-blob parsing.
+- **`mcpTool` config** (`web_search_advanced_exa` | `web_search_exa`): the structured tool is the default; `mcpTool: web_search_exa` restores the text-blob path.
+- **Endpoint tools query**: `mcpURL` defaults to `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa` — the advanced tool is not servable without it. A configured URL lacking a `tools` parameter gets the query spliced in, preserving any existing query string.
+- **Response size cap**: anonymous responses larger than 256 KiB are rejected as `WEB_PROVIDER_ERROR` instead of being parsed.
+
+### Changed
+
+- Anonymous searches request highlight sentences (`enableHighlights` / `highlightsNumSentences`) so the structured mapping always receives snippets; `Title:`-section parsing remains as a graceful fallback when the advanced tool's output is not the expected JSON.
+
+### Tests
+
+- Anonymous-path tests updated for the structured default; new coverage for tool selection, URL splicing, snippet-less entry dropping, the size cap, and the section-parsing fallback (12 tests, `node --test`).
+
 ## [0.1.3] - 2026-08-14
 
 ### Fixed

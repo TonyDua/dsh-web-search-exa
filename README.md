@@ -19,7 +19,9 @@ Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Ha
 
 - 🆓 **Zero-config, keyless by default** — searches route through Exa's hosted MCP
   server (`mcp.exa.ai/mcp`) with **no credentials at all** (Exa's documented
-  unauthenticated public MCP, rate-limited).
+  unauthenticated public MCP, rate-limited). The anonymous path calls
+  `web_search_advanced_exa`, whose text content is a sanitized structured search
+  response — results map onto the seam vocabulary without parsing text blobs.
 - 🔑 **Keyed REST upgrade** — set `EXA_API_KEY` and it automatically switches to
   Exa's `POST /search` REST API (higher limits, no behavior change).
 - 🔌 **Drop-in provider** — registers into the dsh `ctx.web` seam; the existing
@@ -42,10 +44,11 @@ the official one does not have, and keeps the same keyed REST behavior.
 | REST path (`POST /search`) | ✅ only path | ✅ used when a key is configured |
 | Requires an API key | ✅ **yes — empty key makes it unavailable** | ❌ no — keyless anonymous MCP fallback |
 | Anonymous MCP (`mcp.exa.ai/mcp`) | ❌ not implemented | ✅ default when no key |
+| Anonymous result source | n/a | structured JSON (`web_search_advanced_exa`), text-blob parsing as fallback |
 | Zero-config install | ❌ | ✅ |
 | Provider id | `exa` (fixed) | `exa` by default, **configurable via `providerId`** |
 | Cordis plugin name | `web-search-exa` | `web-search-exa` |
-| Config keys | `apiKey`, `baseURL`, `searchType`, `numResults`, `highlightsPerResult` | `apiKey`, `apiKeyEnv`, `apiURL`, `mcpURL`, `searchType`, `numResults`, `highlightsPerResult`, `providerId` |
+| Config keys | `apiKey`, `baseURL`, `searchType`, `numResults`, `highlightsPerResult` | `apiKey`, `apiKeyEnv`, `apiURL`, `mcpURL`, `mcpTool`, `searchType`, `numResults`, `highlightsPerResult`, `providerId` |
 
 ## Which one should I use?
 
@@ -62,7 +65,7 @@ the official one does not have, and keeps the same keyed REST behavior.
 | Condition | Path | Endpoint |
 |---|---|---|
 | `apiKey` / `EXA_API_KEY` set | REST `POST /search` with `Authorization: Bearer` | `https://api.exa.ai/search` (configurable) |
-| No key configured | Anonymous MCP `tools/call web_search_exa` (JSON-RPC 2.0, no credentials) | `https://mcp.exa.ai/mcp` (configurable) |
+| No key configured | Anonymous MCP `tools/call web_search_advanced_exa` (JSON-RPC 2.0, no credentials, sanitized JSON output) | `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa` (configurable; a URL without a `tools` parameter gets it spliced in) |
 
 The anonymous MCP path sends no credentials; attribution rides the
 `x-exa-source: dsh-anything` header. Results are normalized to the seam's
@@ -139,7 +142,8 @@ error such as `Cannot read properties of undefined (reading 'prepare')`.
 | `apiKey` | unset | Literal Exa API key. Empty/missing enables the anonymous MCP path. |
 | `apiKeyEnv` | `EXA_API_KEY` | Environment variable consulted when no literal `apiKey` is set. |
 | `apiURL` | `https://api.exa.ai/search` | REST search endpoint (keyed path only). |
-| `mcpURL` | `https://mcp.exa.ai/mcp` | Exa hosted MCP endpoint (anonymous path). |
+| `mcpURL` | `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa` | Exa hosted MCP endpoint (anonymous path). A URL without a `tools` parameter gets the tools query spliced in. |
+| `mcpTool` | `web_search_advanced_exa` | MCP tool for the anonymous path: `web_search_advanced_exa` (structured JSON output) or `web_search_exa` (text-blob output parsed by `Title:` sections). |
 | `searchType` | `auto` | REST retrieval mode: `auto` / `keyword` / `neural`. |
 | `numResults` | unset | Default result count when the request carries no `maxResults`. |
 | `highlightsPerResult` | `1` | Highlight sentences requested per result on the REST path. |
@@ -235,6 +239,11 @@ and `src/exa/mcp-client.ts`) and the
 [`@oh-my-pi/exa`](https://www.npmjs.com/package/@oh-my-pi/exa) plugin: same
 "REST when a key exists, credential-free `mcp.exa.ai/mcp` otherwise" strategy,
 same `x-exa-source` attribution header, same `Title:`-section response parsing.
+The structured-tool path — `web_search_advanced_exa` as the anonymous default,
+the endpoint `tools` query splicing, the highlight-request arguments, and the
+256 KiB response cap — follows the keyed-and-keyless Exa MCP provider work in
+[deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+(`packages/web/web-search-exa-mcp`).
 Thanks to the oh-my-pi (omp) project for pioneering the zero-config Exa
 integration.
 
