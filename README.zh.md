@@ -16,7 +16,7 @@
 
 ## 特性
 
-- 🆓 **零配置、默认免 key** —— 搜索经由 Exa 官方托管的 MCP 服务器（`mcp.exa.ai/mcp`），**完全不携带凭据**（Exa 官方提供的免认证公共 MCP，有限流）。
+- 🆓 **零配置、默认免 key** —— 搜索经由 Exa 官方托管的 MCP 服务器（`mcp.exa.ai/mcp`），**完全不携带凭据**（Exa 官方提供的免认证公共 MCP，有限流）。匿名路径调用 `web_search_advanced_exa`，其文本内容是一份清洗过的结构化搜索结果 —— 结果无需解析文本块即可映射到 seam 的词汇表。
 - 🔑 **配 key 自动升级 REST** —— 设置 `EXA_API_KEY` 后自动切换到 Exa `POST /search` REST API（额度更高，行为不变）。
 - 🔌 **即插即用** —— 注册进 dsh `ctx.web` seam；模型侧的 `web_search` / `web_fetch` 工具、提示词区段与结果卡片无需任何改动。
 - 🎛️ **`providerId` 开关** —— 可与官方 `@deepseek-ai/dsh-web-search-exa` 在同一 profile 共存（不撞 id、无黑箱覆盖）。
@@ -31,10 +31,11 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 | REST 路径（`POST /search`） | ✅ 唯一路径 | ✅ 配置 key 时使用 |
 | 必须有 API key | ✅ **是——key 为空则不可用** | ❌ 不需要——无 key 走匿名 MCP 兜底 |
 | 匿名 MCP（`mcp.exa.ai/mcp`） | ❌ 未实现 | ✅ 无 key 时默认路径 |
+| 匿名结果来源 | 不适用 | 结构化 JSON（`web_search_advanced_exa`），文本块解析作为兜底 |
 | 零配置安装 | ❌ | ✅ |
 | Provider id | `exa`（固定） | 默认 `exa`，**可用 `providerId` 配置** |
 | Cordis 插件名 | `web-search-exa` | `web-search-exa` |
-| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`apiURL`、`mcpURL`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
+| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`apiURL`、`mcpURL`、`mcpTool`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
 
 ## 我该用哪个？
 
@@ -47,7 +48,7 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 | 条件 | 路径 | 端点 |
 |---|---|---|
 | 配置了 `apiKey` / `EXA_API_KEY` | REST `POST /search`，`Authorization: Bearer` | `https://api.exa.ai/search`（可配置） |
-| 未配置任何 key | 匿名 MCP `tools/call web_search_exa`（JSON-RPC 2.0，无凭据） | `https://mcp.exa.ai/mcp`（可配置） |
+| 未配置任何 key | 匿名 MCP `tools/call web_search_advanced_exa`（JSON-RPC 2.0，无凭据，清洗后的 JSON 输出） | `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa`（可配置；URL 缺少 `tools` 参数时会自动拼接） |
 
 匿名 MCP 路径不发送任何凭据，来源标识通过 `x-exa-source: dsh-anything` 头携带。结果按 seam 的 `WebSearchSource` 形状规范化（`url`、`title`、`snippet`、`publishedAt`），`maxResults` 由 seam 在返回路径上强制执行。匿名使用受 Exa 限流：HTTP 429 会以 `WEB_PROVIDER_ERROR` 呈现，并提示配置 API key（配置后自动切换到 REST 路径）。
 
@@ -105,7 +106,8 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 | `apiKey` | 未设置 | Exa API 密钥字面值。为空/缺失时启用匿名 MCP 路径。 |
 | `apiKeyEnv` | `EXA_API_KEY` | 未设置字面 `apiKey` 时读取的环境变量名。 |
 | `apiURL` | `https://api.exa.ai/search` | REST 搜索端点（仅带 key 的路径使用）。 |
-| `mcpURL` | `https://mcp.exa.ai/mcp` | Exa 托管 MCP 端点（匿名路径使用）。 |
+| `mcpURL` | `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa` | Exa 托管 MCP 端点（匿名路径使用）。URL 缺少 `tools` 参数时自动拼接。 |
+| `mcpTool` | `web_search_advanced_exa` | 匿名路径使用的 MCP 工具：`web_search_advanced_exa`（结构化 JSON 输出）或 `web_search_exa`（文本块输出，按 `Title:` 分节解析）。 |
 | `searchType` | `auto` | REST 检索模式：`auto` / `keyword` / `neural`。 |
 | `numResults` | 未设置 | 请求未携带 `maxResults` 时的默认结果数。 |
 | `highlightsPerResult` | `1` | REST 路径每个结果请求的 highlight 句子数。 |
@@ -162,6 +164,7 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 ## 致谢（Acknowledgements）
 
 匿名 MCP 接入方式参考了 [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `web_search` 实现（`packages/coding-agent/src/web/search/providers/exa.ts` 与 `src/exa/mcp-client.ts`）以及 [`@oh-my-pi/exa`](https://www.npmjs.com/package/@oh-my-pi/exa) 插件：同样的"有 key 走 REST、无 key 走免凭据 `mcp.exa.ai/mcp`"策略、同样的 `x-exa-source` 来源头、同样的 `Title:` 分节响应解析。感谢 oh-my-pi（omp）项目率先打通了零配置的 Exa 接入。
+结构化工具路径 —— 默认使用 `web_search_advanced_exa` 作为匿名路径、端点 `tools` 查询参数拼接、高亮请求参数以及 256 KiB 响应上限 —— 参考了 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 中的免 key Exa MCP 提供方工作（`packages/web/web-search-exa-mcp`）。
 
 同时感谢 **[Exa](https://exa.ai)** 提供并运营这个**免费、免认证的托管 MCP 服务器**（`mcp.exa.ai/mcp`）——正是它让本包的零配置默认路径成为可能。Exa 托管 MCP 是 Exa 的官方产品；匿名使用有限流（见 FAQ）。
 
