@@ -7,11 +7,15 @@ import type { WebSearchProvider } from '@deepseek-ai/dsh-web';
 
 /** Config schema type (fields are optional at the load boundary). */
 export interface ExaSearchProviderConfig {
+	/** Provider id registered into `ctx.web`; defaults to `exa`. */
+	providerId?: string;
 	/** Literal Exa API key; empty/missing enables the anonymous MCP path. */
 	apiKey?: string;
 	/** Environment variable consulted when no literal `apiKey` is configured. */
 	apiKeyEnv?: string;
-	/** REST search endpoint, used only when an API key is available. */
+	/** Exa API base URL; `/search` is appended for the keyed REST path. */
+	baseURL?: string;
+	/** @deprecated Use `baseURL`; this full endpoint remains supported for compatibility. */
 	apiURL?: string;
 	/** Exa hosted MCP endpoint, used by the anonymous fallback. */
 	mcpURL?: string;
@@ -23,18 +27,26 @@ export interface ExaSearchProviderConfig {
 	highlightsPerResult?: number;
 }
 
+/** Fully resolved options accepted by the provider constructor. */
+export interface ExaSearchProviderOptions {
+	providerId?: string;
+	apiKey: string;
+	apiKeyEnv: string;
+	baseURL: string;
+	apiURL?: string;
+	mcpURL: string;
+	searchType: 'auto' | 'keyword' | 'neural';
+	numResults?: number;
+	highlightsPerResult: number;
+}
+
 /** The Exa-backed provider with anonymous MCP fallback. */
 export class ExaSearchProvider implements WebSearchProvider {
 	readonly id: string;
-	constructor(resolveOptions: () => {
-		apiKey: string;
-		apiKeyEnv: string;
-		apiURL: string;
-		mcpURL: string;
-		searchType: 'auto' | 'keyword' | 'neural';
-		numResults?: number;
-		highlightsPerResult: number;
-	});
+	constructor(
+		resolveOptions: () => ExaSearchProviderOptions,
+		resolveApiKey?: (options: ExaSearchProviderOptions) => string | undefined,
+	);
 	available(): boolean;
 	search(request: { query: string; maxResults?: number }, signal?: AbortSignal): Promise<{
 		sources: ReadonlyArray<{ url: string; title?: string; snippet?: string; publishedAt?: string }>;
@@ -50,5 +62,9 @@ export const inject: readonly ['web'];
 export const Config: import('@deepseek-ai/schemastery').Schema<ExaSearchProviderConfig>;
 /** Settings namespace for the Web panel section. */
 export const SETTINGS_NAMESPACE: string;
+/** Default Exa API base URL; `/search` is appended. */
+export const DEFAULT_BASE_URL: string;
+/** Legacy default full REST endpoint. */
+export const DEFAULT_API_URL: string;
 /** Register the Exa search provider with `ctx.web` and install its Settings section. */
 export function apply(ctx: Context, config: ExaSearchProviderConfig): void;

@@ -8,12 +8,27 @@
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
+[![dsh](https://img.shields.io/badge/dsh-0.1.2--rc.1-4c6?logo=deepseek&logoColor=white)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 > Zero-config [Exa](https://exa.ai) web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh):
 > **no API key required** — a `WebSearchProvider` for the `ctx.web` seam with an
 > anonymous MCP fallback plus a keyed REST path.
 
 Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Harness (dsh).
+
+## Supported versions
+
+`@tonydua/dsh-web-search-exa@0.1.4` is tested and supported with:
+
+- `@deepseek-ai/dsh` `0.1.2-rc.1` (the current npm `latest` release)
+- `@deepseek-ai/dsh-web` `0.1.2-rc.1`
+- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` (optional; enables live Settings integration)
+- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1`
+- `@deepseek-ai/cordis` `4.0.2`
+- Node.js `>=18`
+
+The dsh `0.1.2-rc.1` API is the compatibility baseline. The `0.1.5-alpha.1`
+alpha line is not part of this release's tested support matrix.
 
 ## Features
 
@@ -45,7 +60,7 @@ the official one does not have, and keeps the same keyed REST behavior.
 | Zero-config install | ❌ | ✅ |
 | Provider id | `exa` (fixed) | `exa` by default, **configurable via `providerId`** |
 | Cordis plugin name | `web-search-exa` | `web-search-exa` |
-| Config keys | `apiKey`, `baseURL`, `searchType`, `numResults`, `highlightsPerResult` | `apiKey`, `apiKeyEnv`, `apiURL`, `mcpURL`, `searchType`, `numResults`, `highlightsPerResult`, `providerId` |
+| Config keys | `apiKey`, `baseURL`, `searchType`, `numResults`, `highlightsPerResult` | `apiKey`, `apiKeyEnv`, `baseURL`, `apiURL` (legacy), `mcpURL`, `searchType`, `numResults`, `highlightsPerResult`, `providerId` |
 
 ## Which one should I use?
 
@@ -61,7 +76,7 @@ the official one does not have, and keeps the same keyed REST behavior.
 
 | Condition | Path | Endpoint |
 |---|---|---|
-| `apiKey` / `EXA_API_KEY` set | REST `POST /search` with `Authorization: Bearer` | `https://api.exa.ai/search` (configurable) |
+| `apiKey` / `EXA_API_KEY` set | REST `POST /search` with `Authorization: Bearer` | `https://api.exa.ai/search` (`baseURL` configurable) |
 | No key configured | Anonymous MCP `tools/call web_search_exa` (JSON-RPC 2.0, no credentials) | `https://mcp.exa.ai/mcp` (configurable) |
 
 The anonymous MCP path sends no credentials; attribution rides the
@@ -73,7 +88,7 @@ key (which also switches to the REST path automatically).
 
 ## Installation (into a dsh profile)
 
-**One command from npm** (v0.1.3+ ships the `dsh.bundle` manifest — the bundle
+**One command from npm** (v0.1.4+ ships the `dsh.bundle` manifest — the bundle
 patch inserts the provider row, so no manual patch editing is needed):
 
 ```powershell
@@ -138,7 +153,8 @@ error such as `Cannot read properties of undefined (reading 'prepare')`.
 | `providerId` | `exa` | Provider id registered into `ctx.web`. Only change it when both this and the official package are installed (see next section). |
 | `apiKey` | unset | Literal Exa API key. Empty/missing enables the anonymous MCP path. |
 | `apiKeyEnv` | `EXA_API_KEY` | Environment variable consulted when no literal `apiKey` is set. |
-| `apiURL` | `https://api.exa.ai/search` | REST search endpoint (keyed path only). |
+| `baseURL` | `https://api.exa.ai` | Exa API base URL; `/search` is appended for the keyed REST path. Matches the official dsh provider. |
+| `apiURL` | unset | Deprecated full REST endpoint alias. If set, it takes precedence over `baseURL`. |
 | `mcpURL` | `https://mcp.exa.ai/mcp` | Exa hosted MCP endpoint (anonymous path). |
 | `searchType` | `auto` | REST retrieval mode: `auto` / `keyword` / `neural`. |
 | `numResults` | unset | Default result count when the request carries no `maxResults`. |
@@ -189,7 +205,7 @@ plugin namespaces. What is true today:
   as `web-search-exa` (`@tonydua/dsh-web-search-exa`) once enabled — the
   inventory reads the live Cordis loader, no extra code needed.
 - **Settings namespace** (server-side): the plugin registers the
-  `web-search-exa` section via `installSettingsSection`, so the data layer is
+  `web-search-exa` section via the current `ctx.settings.installSection` API, so the data layer is
   writable — but **no client card binds to it**, so nothing shows in the UI.
   The built-in "Web search" card edits the official
   `web-search-deepseek` namespace, not this plugin.
@@ -226,6 +242,11 @@ This version registers the `web-search-exa` settings namespace server-side
 only; a UI card is planned for the next version. Configure through
 `cordis.patch.yml` or environment variables for now (see
 [In the Web panel](#in-the-web-panel)).
+
+**Q: Which dsh versions are supported?**
+This release supports dsh `0.1.2-rc.1` and its matching `dsh-web`,
+`dsh-settings`, and `dsh-launch-environment` packages. The `0.1.5-alpha.1`
+line is not tested by this release.
 
 ## Acknowledgements
 

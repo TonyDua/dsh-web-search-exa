@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ExaSearchProvider } from "../lib/index.js";
+import { apply, ExaSearchProvider } from "../lib/index.js";
 
 const baseOptions = {
 	apiKey: "",
 	apiKeyEnv: "__DSH_EXA_TEST_KEY__",
+	baseURL: "https://api.exa.ai",
 	apiURL: "https://api.exa.ai/search",
 	mcpURL: "https://mcp.exa.ai/mcp",
 	searchType: "auto",
@@ -21,6 +22,71 @@ function provider(overrides = {}) {
 test("provider id defaults to exa and honors the providerId switch", () => {
 	assert.equal(provider().id, "exa");
 	assert.equal(provider({ providerId: "exa-anon" }).id, "exa-anon");
+});
+
+function appliedProvider(config = baseOptions, environmentValues = {}) {
+	let registered;
+	let installArgs;
+	const environment = {
+		get(name) {
+			const value = environmentValues[name];
+			return value === undefined ? undefined : { value, source: "process" };
+		},
+	};
+	const ctx = {
+		get(key) {
+			return key === "launchEnvironment" ? environment : undefined;
+		},
+		inject(deps, callback) {
+			assert.deepEqual(deps, ["settings"]);
+			callback({
+				settings: {
+					installSection(...args) {
+						installArgs = args;
+						args[4].setSource(() => args[3]);
+					},
+				},
+			});
+		},
+		web: {
+			registerSearchProvider(value) {
+				registered = value;
+			},
+		},
+	};
+	apply(ctx, config);
+	return { installArgs, provider: registered };
+}
+
+test("apply uses the dsh 0.1.2 settings API and launch environment", async () => {
+	const { installArgs, provider: registered } = appliedProvider(
+		{ ...baseOptions, apiKey: "" },
+		{ __DSH_EXA_TEST_KEY__: "ambient-secret" },
+	);
+	assert.equal(installArgs[1], "web-search-exa");
+	assert.equal(registered.id, "exa");
+
+	let call;
+	await withFetch(async (url, init) => {
+		call = { url: String(url), init };
+		return new Response(JSON.stringify({ results: [] }), { status: 200 });
+	}, () => registered.search({ query: "example" }));
+	assert.equal(call.init.headers.authorization, "Bearer ambient-secret");
+});
+
+test("baseURL follows the current official Exa option shape", async () => {
+	const { provider: registered } = appliedProvider({
+		...baseOptions,
+		apiKey: "secret",
+		apiURL: undefined,
+		baseURL: "https://exa.example/v1/",
+	});
+	let url;
+	await withFetch(async (requestUrl) => {
+		url = String(requestUrl);
+		return new Response(JSON.stringify({ results: [] }), { status: 200 });
+	}, () => registered.search({ query: "example" }));
+	assert.equal(url, "https://exa.example/v1/search");
 });
 
 function withFetch(stub, callback) {

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-09-09
+
+### Fixed
+
+- **dsh 0.1.2 compatibility**: use the current `ctx.settings.installSection`
+  API instead of the removed `installSettingsSection` helper, so importing the
+  plugin no longer fails on the current dsh runtime.
+- Resolve `EXA_API_KEY` through dsh's launch-environment snapshot, while
+  retaining the `process.env` fallback for direct library use and older hosts.
+
+### Changed
+
+- Align peer and development dependencies with dsh `0.1.2-rc.1`, Cordis
+  `4.0.2`, and Schemastery `3.18.2`.
+- Add the official-compatible `baseURL` option; the existing full `apiURL`
+  option remains supported as a deprecated compatibility alias.
+
 ## [0.1.3] - 2026-08-14
 
 ### Fixed

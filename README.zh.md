@@ -8,11 +8,25 @@
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
+[![dsh](https://img.shields.io/badge/dsh-0.1.2--rc.1-4c6?logo=deepseek&logoColor=white)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 > 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）提供**零配置**的 [Exa](https://exa.ai) 网页搜索：
 > **无需 API key** —— 一个 `ctx.web` seam 的 `WebSearchProvider`，内置匿名 MCP 兜底 + 带 key 的 REST 路径。
 
 使用 [deepseek-v4-flash](https://api-docs.deepseek.com) 在 DeepSeek Harness（dsh）内开发。
+
+## 当前支持的版本
+
+`@tonydua/dsh-web-search-exa@0.1.4` 已针对以下版本测试并支持：
+
+- `@deepseek-ai/dsh` `0.1.2-rc.1`（当前 npm `latest` 发布线）
+- `@deepseek-ai/dsh-web` `0.1.2-rc.1`
+- `@deepseek-ai/dsh-settings` `0.1.2-rc.1`（可选；用于启用实时 Settings 集成）
+- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1`
+- `@deepseek-ai/cordis` `4.0.2`
+- Node.js `>=18`
+
+dsh `0.1.2-rc.1` 是本版本的兼容基线；`0.1.5-alpha.1` alpha 线不在本版本的测试支持矩阵内。
 
 ## 特性
 
@@ -34,7 +48,7 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 | 零配置安装 | ❌ | ✅ |
 | Provider id | `exa`（固定） | 默认 `exa`，**可用 `providerId` 配置** |
 | Cordis 插件名 | `web-search-exa` | `web-search-exa` |
-| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`apiURL`、`mcpURL`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
+| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`baseURL`、`apiURL`（旧版）、`mcpURL`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
 
 ## 我该用哪个？
 
@@ -46,14 +60,14 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 
 | 条件 | 路径 | 端点 |
 |---|---|---|
-| 配置了 `apiKey` / `EXA_API_KEY` | REST `POST /search`，`Authorization: Bearer` | `https://api.exa.ai/search`（可配置） |
+| 配置了 `apiKey` / `EXA_API_KEY` | REST `POST /search`，`Authorization: Bearer` | `https://api.exa.ai/search`（可用 `baseURL` 配置） |
 | 未配置任何 key | 匿名 MCP `tools/call web_search_exa`（JSON-RPC 2.0，无凭据） | `https://mcp.exa.ai/mcp`（可配置） |
 
 匿名 MCP 路径不发送任何凭据，来源标识通过 `x-exa-source: dsh-anything` 头携带。结果按 seam 的 `WebSearchSource` 形状规范化（`url`、`title`、`snippet`、`publishedAt`），`maxResults` 由 seam 在返回路径上强制执行。匿名使用受 Exa 限流：HTTP 429 会以 `WEB_PROVIDER_ERROR` 呈现，并提示配置 API key（配置后自动切换到 REST 路径）。
 
 ## 安装（装入 dsh profile）
 
-**一条命令从 npm 安装**（v0.1.3+ 自带 `dsh.bundle` manifest——bundle patch 会自动插入 provider 行，无需手动改 patch）：
+**一条命令从 npm 安装**（v0.1.4+ 自带 `dsh.bundle` manifest——bundle patch 会自动插入 provider 行，无需手动改 patch）：
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
@@ -104,7 +118,8 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 | `providerId` | `exa` | 注册进 `ctx.web` 的提供方 id。仅当本包与官方包同时安装时才需要改（见下一节）。 |
 | `apiKey` | 未设置 | Exa API 密钥字面值。为空/缺失时启用匿名 MCP 路径。 |
 | `apiKeyEnv` | `EXA_API_KEY` | 未设置字面 `apiKey` 时读取的环境变量名。 |
-| `apiURL` | `https://api.exa.ai/search` | REST 搜索端点（仅带 key 的路径使用）。 |
+| `baseURL` | `https://api.exa.ai` | Exa API 基础 URL；带 key 的 REST 路径会追加 `/search`，与官方 dsh 提供方一致。 |
+| `apiURL` | 未设置 | 已弃用的完整 REST 端点别名；设置后优先于 `baseURL`。 |
 | `mcpURL` | `https://mcp.exa.ai/mcp` | Exa 托管 MCP 端点（匿名路径使用）。 |
 | `searchType` | `auto` | REST 检索模式：`auto` / `keyword` / `neural`。 |
 | `numResults` | 未设置 | 请求未携带 `maxResults` 时的默认结果数。 |
@@ -139,7 +154,7 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 **状态：本版本的配置入口在 profile 补丁层，不在 Web UI —— 没有可编辑的界面入口。** Settings UI 只渲染客户端插件为固定命名空间（`shell`、`agent-loop`、`web-search-deepseek`）手工注册的卡片，对任意插件命名空间没有通用表单。当前实际情况：
 
 - **插件清单**（Settings → Plugins）：启用后自动出现 `web-search-exa`（`@tonydua/dsh-web-search-exa`）条目 —— 清单直接读取 Cordis loader 的实时条目，无需额外代码。
-- **设置命名空间**（服务端）：插件通过 `installSettingsSection` 注册了 `web-search-exa` 段，数据层可写——但**没有任何客户端卡片绑定它**，所以界面上不显示。内置的 "Web search" 卡片编辑的是官方 `web-search-deepseek` 命名空间，与本插件无关。
+- **设置命名空间**（服务端）：插件通过当前的 `ctx.settings.installSection` API 注册了 `web-search-exa` 段，数据层可写——但**没有任何客户端卡片绑定它**，所以界面上不显示。内置的 "Web search" 卡片编辑的是官方 `web-search-deepseek` 命名空间，与本插件无关。
 - **现在怎么改配置**：编辑 `$DSH_HOME/profiles/web/cordis.patch.yml` 里本插件的 `config`（字段与默认值见上方配置表），重启 `dsh web`；或用环境变量 `EXA_API_KEY` / `$DSH_WEB_SEARCH_PROVIDER`。`apiKey` 标记了 `role('secret')`，任何 `describe()` 响应都不会暴露其值。
 - **搜索结果卡片**：`web_search` 调用经 `dsh-tool-web` 照常渲染 `web` 结果卡片（来源、摘要、日期），与提供方无关 —— 匿名 Exa 的结果与 DeepSeek 搜索显示完全一致。
 
@@ -158,6 +173,9 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 
 **Q: 为什么 Web UI 里没有设置入口？**
 本版本只在服务端注册了 `web-search-exa` 设置命名空间；UI 卡片计划在下一版本提供。现阶段通过 `cordis.patch.yml` 或环境变量配置（见[在 Web 面板中的呈现](#在-web-面板中的呈现)）。
+
+**Q: 支持哪些 dsh 版本？**
+本版本支持 dsh `0.1.2-rc.1` 及其匹配的 `dsh-web`、`dsh-settings`、`dsh-launch-environment` 包；`0.1.5-alpha.1` 线未经本版本测试。
 
 ## 致谢（Acknowledgements）
 
