@@ -330,13 +330,51 @@ export declare const name = "web-search-exa";
 /** The web seam this provider registers into. */
 export declare const inject: readonly ["web"];
 /**
- * Register the Exa search provider with `ctx.web` and, when the optional
- * settings service is mounted, install its Settings section.
+ * The subset of the settings service this plugin uses, described structurally
+ * rather than by the concrete `dsh-settings` class, because that API changed
+ * shape and the plugin must work on both sides of the change.
  *
- * The settings install is deliberately inside `ctx.inject`, so a profile that
+ * - **dsh ≤ 0.1.6** exposes `SettingsProvider.installSection`, which registered
+ *   a namespace and — the part the provider actually depends on — handed back
+ *   the authoritative section thunk through `setSource`.
+ * - **dsh ≥ 0.1.7** replaces that with `SettingsForms`, which derives a page
+ *   from the Config schema the Loader already holds for this entry
+ *   (`SettingsDescriptor.schema`, `autoGenerate`). There is no namespace to
+ *   install, so this plugin has nothing to register and must simply not
+ *   crash.
+ *
+ * Both members are optional: a host with neither still gets a working provider,
+ * only without live Settings-driven reconfiguration.
+ */
+interface SettingsServiceLike {
+  installSection?: (owner: unknown, ns: string, schema: unknown, entry: unknown, hooks: {
+    setSource: (source: () => ExaSearchProviderConfig) => void;
+    onChange: () => void;
+  }) => void;
+}
+/**
+ * Wire the settings service when the host exposes the pre-0.1.7 registration
+ * API; do nothing (rather than throw) on hosts that do not.
+ *
+ * @param settings - the mounted settings service, of either generation.
+ * @param owner - the consuming context `installSection` attributes the section to.
+ * @param config - the composition entry, used as the section's base value.
+ * @param adopt - receives the authoritative section thunk so later searches read
+ * live edits instead of the boot-time config.
+ * @returns true when a section was installed.
+ */
+declare function installSettingsSection(settings: SettingsServiceLike, owner: unknown, config: ExaSearchProviderConfig, adopt: (source: () => ExaSearchProviderConfig) => void): boolean;
+/**
+ * Register the Exa search provider with `ctx.web` and, when the settings
+ * service is mounted *and* exposes the pre-0.1.7 registration API, install its
+ * Settings section.
+ *
+ * The settings work is deliberately inside `ctx.inject`, so a profile that
  * omits `dsh-settings` still mounts the provider — keyless search must not
- * depend on the Settings UI being present.
+ * depend on the Settings UI being present. The provider registration happens
+ * outside it for the same reason, and is never conditional on the settings
+ * generation.
  */
 export declare function apply(ctx: Context, config: ExaSearchProviderConfig): void;
 //#endregion
-export { Config, type ExaApiKeyResolver, type ExaKeyEnvironment, type ExaMcpSection, type ExaOptionsResolver, type ExaRestResponse, type ExaRestResult, type ExaSearchProviderConfig, type ExaSearchProviderOptions, type ExaSearchType, type McpContentItem, type McpJsonRpcError, type McpPayload, type McpToolResult };
+export { Config, type ExaApiKeyResolver, type ExaKeyEnvironment, type ExaMcpSection, type ExaOptionsResolver, type ExaRestResponse, type ExaRestResult, type ExaSearchProviderConfig, type ExaSearchProviderOptions, type ExaSearchType, type McpContentItem, type McpJsonRpcError, type McpPayload, type McpToolResult, installSettingsSection };

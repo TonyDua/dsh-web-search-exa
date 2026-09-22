@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { apply, ExaAvailabilityBreaker, ExaSearchProvider } from "../lib/index.js";
+import { apply, ExaAvailabilityBreaker, ExaSearchProvider, installSettingsSection } from "../lib/index.js";
 
 const baseOptions = {
 	apiKey: "",
@@ -260,4 +260,60 @@ test("the keyed REST path is never hidden by the breaker", async () => {
 		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
 	});
 	assert.equal(instance.available(), true, "a paid endpoint failure is the caller's to see, not something to hide");
+});
+
+// ── Cross-version: the settings service changed shape in dsh 0.1.7 ──────────
+
+test("a dsh >= 0.1.7 settings service (no installSection) is tolerated", () => {
+	// 0.1.7 replaced SettingsProvider.installSection with SettingsForms, which
+	// derives the page from the entry's Config schema instead. The plugin has
+	// nothing to register there and must return false rather than throw.
+	const newer = { configure() {}, describe() {}, prepareDocument() {} };
+	const adopted = [];
+	assert.equal(
+		installSettingsSection(newer, {}, { ...baseOptions }, source => adopted.push(source)),
+		false,
+	);
+	assert.deepEqual(adopted, [], "nothing to adopt when there is no authoritative source");
+});
+
+test("apply still registers the provider on a dsh >= 0.1.7 settings service", () => {
+	let registered;
+	const ctx = {
+		get(key) {
+			return key === "launchEnvironment" ? { get: () => undefined } : undefined;
+		},
+		inject(deps, callback) {
+			assert.deepEqual(deps, ["settings"]);
+			// A 0.1.7-shaped service: no installSection anywhere.
+			callback({ settings: { configure() {}, describe() {} } });
+		},
+		web: {
+			registerSearchProvider(value) {
+				registered = value;
+			},
+		},
+	};
+	assert.doesNotThrow(() => apply(ctx, { ...baseOptions }));
+	assert.equal(registered?.id, "exa", "the provider must register regardless of the settings generation");
+});
+
+test("installSettingsSection reports true and adopts the source on the older API", () => {
+	const entry = { ...baseOptions };
+	let installed;
+	const older = {
+		installSection(...args) {
+			installed = args;
+			args[4].setSource(() => ({ ...entry, numResults: 42 }));
+		},
+	};
+	let current = () => entry;
+	assert.equal(
+		installSettingsSection(older, "owner-ctx", entry, source => {
+			current = source;
+		}),
+		true,
+	);
+	assert.equal(installed[1], "web-search-exa", "namespace must stay stable across versions");
+	assert.equal(current().numResults, 42, "live edits must reach the provider");
 });
