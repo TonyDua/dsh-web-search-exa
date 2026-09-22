@@ -74,6 +74,44 @@ verify_version() {
   return 0
 }
 
+# Whether npm — not just pnpm — will actually install the published tarball
+# next to this dsh version.
+#
+# Worth checking separately because the two package managers disagree about
+# pre-releases: pnpm accepted the old `>=0.1.2-rc.1` peer range on all 14
+# versions while npm rejected it on 13 of them with ERESOLVE. Only an
+# end-to-end `npm install` catches that, so this packs the real tarball and
+# installs it.
+npm_installs() {
+  local v="$1" pack="$WORK_ROOT/npm-pack" work
+  mkdir -p "$pack"
+  ( cd "$REPO_ROOT" && npm pack --pack-destination "$pack" >/dev/null 2>&1 )
+  local tarball
+  tarball="$(ls "$pack"/*.tgz 2>/dev/null | head -1)"
+  if [ -z "$tarball" ]; then printf '%-16s npm pack failed\n' "$v"; return 1; fi
+  work="$(mktemp -d)"
+  local cordis; cordis="$(cordis_for "$v")"
+  node -e '
+    const fs = require("node:fs");
+    const [tarball, version, cordis, dir] = process.argv.slice(1);
+    fs.writeFileSync(`${dir}/package.json`, JSON.stringify({
+      name: "compat-npm", private: true, type: "module",
+      dependencies: {
+        "@tonydua/dsh-web-search-exa": `file:${tarball}`,
+        "@deepseek-ai/dsh-web": version,
+        "@deepseek-ai/dsh-settings": version,
+        "@deepseek-ai/dsh-launch-environment": version,
+        "@deepseek-ai/cordis": cordis,
+      },
+    }, null, 2));
+  ' "$tarball" "$v" "$cordis" "$work"
+  if ( cd "$work" && npm install --no-audit --no-fund >/dev/null 2>&1 ); then
+    printf '%-16s npm install OK\n' "$v"; rm -rf "$work"; return 0
+  fi
+  printf '%-16s npm install FAILED (ERESOLVE?)\n' "$v"
+  rm -rf "$work"; return 1
+}
+
 main() {
   if [ ! -x "$(command -v node)" ]; then echo "node is required" >&2; exit 1; fi
   if [ ! -f "$TSC" ]; then echo "run 'pnpm install' first ($TSC missing)" >&2; exit 1; fi
@@ -86,6 +124,7 @@ main() {
   for v in "${targets[@]}"; do
     install_version "$v" || { printf '%-16s INSTALL FAILED\n' "$v"; failures=$((failures + 1)); continue; }
     verify_version "$v" || failures=$((failures + 1))
+    npm_installs "$v" || failures=$((failures + 1))
   done
   echo
   if [ "$failures" -eq 0 ]; then echo "all versions passed"; else echo "$failures version(s) failed"; fi

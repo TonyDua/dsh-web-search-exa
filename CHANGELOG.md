@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The peer range now actually installs on every claimed version.** The earlier
+  `>=0.1.2-rc.1` was verified with pnpm, where it works, and assumed to work
+  everywhere. Measured with npm against the real tarball it installs on **1 of
+  14** versions and fails the other 13 with `ERESOLVE`. The cause is the
+  pre-release rule: a prerelease satisfies a range only when some comparator
+  carries a prerelease on the same `major.minor.patch` tuple, so
+  `>=0.1.2-rc.1` excludes `0.1.5-rc.2`. Each `0.1.x` line that shipped a
+  prerelease now gets its own comparator, ending with `>=0.1.8` to carry future
+  stable releases. Result: **14/14 under both npm and pnpm.** A future `0.1.9`
+  prerelease line needs one added entry.
 - **Runs on dsh 0.1.7+.** `0.1.7-alpha.1` removed
   `SettingsProvider.installSection` and replaced the service with
   `SettingsForms`, which derives a page from the Config schema the Loader

@@ -33,10 +33,36 @@ against it. Reproduce with `bash scripts/compat-matrix.sh`.
 | `0.1.6-alpha.1`, `0.1.6-alpha.2` | ✅ | |
 | `0.1.7-alpha.1` | ✅ | settings service changed shape — see below |
 
-Peer ranges are open-ended (`>=0.1.2-rc.1`, `@deepseek-ai/cordis` `>=4.0.2`)
-because a closed range cannot express "works on every published line": semver
-excludes pre-releases from ordinary ranges, so `^0.1.2-rc.1` does not match
-`0.1.5-rc.2`.
+### Why the peer range looks like that
+
+```jsonc
+"@deepseek-ai/dsh-web": ">=0.1.2-alpha.2 || >=0.1.3-alpha.2 || >=0.1.4-0 || >=0.1.5-alpha.1 || >=0.1.6-alpha.1 || >=0.1.7-alpha.1 || >=0.1.8"
+```
+
+That enumeration is not decoration — it is the only form that installs on **every**
+published version under **both** pnpm and npm. The rule that forces it:
+
+> A pre-release version satisfies a range only if some comparator in that range
+> carries a pre-release **on the same `major.minor.patch` tuple**.
+
+So `>=0.1.2-rc.1` does **not** match `0.1.5-rc.2` — the tuples differ. A single
+open-ended lower bound therefore cannot cover a project published as a series of
+prereleases, and `*` would accept even a breaking `1.0`. Each `0.1.x` line that
+ever shipped a prerelease needs its own comparator; `>=0.1.8` then carries every
+future stable release, so the list only needs a new entry when dsh opens a new
+`0.1.x` prerelease line.
+
+Measured, on the real published tarball:
+
+| range | npm installs | pnpm |
+|---|---|---|
+| `>=0.1.2-rc.1` (the earlier attempt) | **1 / 14** versions | 14 / 14 |
+| enumerated (current) | **14 / 14** versions | 14 / 14 |
+
+This was found by testing rather than reasoning: the open-ended range is fine on
+pnpm, which is what `dsh plugin add` uses, and fails on npm for 13 of the 14
+versions with `ERESOLVE`. If you install with npm and hit that on an older
+release of this package, either upgrade, or pass `--legacy-peer-deps`.
 
 ### What differs across versions
 
