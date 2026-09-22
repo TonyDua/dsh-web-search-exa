@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`id` no longer freezes at construction.** It was assigned once in the
+  constructor, so a live Settings change to `providerId` left the provider
+  reporting a stale id. It is now read per access.
+- **The keyless channel now reports its own health.** A new
+  `ExaAvailabilityBreaker` opens after 3 consecutive transient failures
+  (5xx/429/network/parse) for a 5-minute cooldown, during which
+  `available()` returns false — previously it returned true unconditionally, so
+  a throttled public endpoint produced a hard error on every search with no way
+  for the seam to route around it. One successful search closes the breaker.
+  A 4xx other than 429 deliberately does not trip it: that failure would repeat
+  forever, and hiding it behind a cooldown only delays the same error.
+- **429 is no longer indistinguishable from a network failure.** The anonymous
+  path throws `ExaRateLimitError` with code `WEB_RATE_LIMITED` and a message
+  naming `EXA_API_KEY`, instead of a generic `WEB_PROVIDER_ERROR`, so the model
+  can tell throttling from breakage. The keyed REST path is unaffected by the
+  breaker — a paid endpoint's failure is the caller's to see.
+
 ### Added
 
 - **TypeScript source tree** (`src/`) — the implementation is now real source
@@ -17,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lib/index.d.ts`; `tsc --noEmit` gates types.
 - `pnpm run build`, `pnpm run typecheck`, `pnpm run test:only`, and a
   `prepublishOnly` build hook so the tarball cannot ship stale artifacts.
+- 6 regression tests covering the three fixes above (the frozen-`id` test was
+  confirmed to fail against the previous build).
 
 ### Changed
 
@@ -37,9 +58,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verified
 
-- 8/8 `node:test` cases pass against the rebuilt artifact on dsh `0.1.5-rc.2`.
+- 14/14 `node:test` cases pass against the rebuilt artifact on dsh `0.1.5-rc.2`.
 - End-to-end: `dsh --profile headless` searched through the anonymous MCP path
   with no API key in the environment, both before and after the rebuild.
+
+### Known limitation
+
+- The plugin can now *report* that it is degraded, but the harness seam has no
+  provider priority chain: it selects exactly one usable provider and errors
+  (`WEB_PROVIDER_AMBIGUOUS`) when several are usable. So this makes failover
+  *possible*, not automatic — see the README note on unpinning `searchProvider`.
 
 ## [0.1.4] - 2026-09-09
 

@@ -45,6 +45,28 @@ peerDependencyRules:
     - '@deepseek-ai/dsh-*'
 ```
 
+### 降级与回退
+
+免 key 通道是共享的尽力而为端点。本 provider 会如实汇报自身健康状况，而不是假装永远可用：
+
+- 连续 3 次瞬时失败（5xx、429、网络错误、响应体无法解析）会打开熔断器并冷却 5 分钟，
+  期间 `available()` 返回 `false`；任意一次成功搜索即关闭熔断器。
+- 429 以外的 4xx **不会**触发熔断——这类失败会永远重复，把它藏进冷却期只是推迟同一个错误。
+- 匿名通道的 429 抛出 `WEB_RATE_LIMITED`（而非笼统的 `WEB_PROVIDER_ERROR`），
+  错误信息里直接点名 `EXA_API_KEY`。
+- 配了 key 的 REST 路径不受熔断影响：付费端点的失败应当让你看到。
+
+**但"是否真的自动回退"取决于 harness 侧。** seam 只会选中唯一一个可用 provider，
+并不存在优先级链——同时存在多个可用 provider 时会抛 `WEB_PROVIDER_AMBIGUOUS`。因此：
+
+- 写死 `searchProvider: exa`：选择确定，但**没有**回退；熔断打开时得到
+  `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。
+- 不写 `searchProvider`：牺牲确定性。Exa 降级后确实不再是候选，但如果另一个
+  provider（比如带有效 `DEEPSEEK_API_KEY` 的 `deepseek-official`）也可用，
+  seam 会报"多个可用"而不是替你挑一个。
+
+两种失败模式各有利弊，插件无法替你做这个决定。
+
 ### 从源码构建
 
 ```sh

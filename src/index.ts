@@ -42,7 +42,12 @@ import type { ExaKeyEnvironment, ExaSearchProviderConfig } from './provider.ts';
 
 export * from './constants.ts';
 export {
+	DEFAULT_BREAKER_COOLDOWN_MS,
+	DEFAULT_BREAKER_THRESHOLD,
+	ExaAvailabilityBreaker,
+	ExaRateLimitError,
 	ExaSearchProvider,
+	ExaTransientError,
 	resolveApiKey,
 	resolveApiKeyFromProcess,
 	resolveOptions,

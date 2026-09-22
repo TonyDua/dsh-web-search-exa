@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { apply, ExaSearchProvider } from "../lib/index.js";
+import { apply, ExaAvailabilityBreaker, ExaSearchProvider } from "../lib/index.js";
 
 const baseOptions = {
 	apiKey: "",
@@ -17,6 +17,12 @@ const baseOptions = {
 function provider(overrides = {}) {
 	const options = { ...baseOptions, ...overrides };
 	return new ExaSearchProvider(() => options);
+}
+
+/** A provider wired to an injected breaker and fixed options. */
+function providerWith(breaker, overrides = {}) {
+	const options = { ...baseOptions, ...overrides };
+	return new ExaSearchProvider(() => options, undefined, breaker);
 }
 
 test("provider id defaults to exa and honors the providerId switch", () => {
@@ -179,4 +185,79 @@ test("already-aborted searches use the seam cancellation code", async () => {
 			provider().search({ query: "example" }, controller.signal),
 			error => error.code === "WEB_ABORTED",
 		);
+});
+
+// ── Regressions: health reporting, honest id, actionable rate limits ────────
+
+test("id follows a live providerId change instead of freezing at construction", () => {
+	let section = { ...baseOptions, providerId: "exa-anon" };
+	const instance = new ExaSearchProvider(() => section);
+	assert.equal(instance.id, "exa-anon");
+
+	// A Settings edit swaps the authoritative section; the reported id must follow.
+	section = { ...section, providerId: "exa-renamed" };
+	assert.equal(instance.id, "exa-renamed");
+
+	// Absent again: fall back to the documented default.
+	section = { ...section, providerId: undefined };
+	assert.equal(instance.id, "exa");
+});
+
+test("repeated transient anonymous failures make the provider report unavailable", async () => {
+	const breaker = new ExaAvailabilityBreaker(3, 60_000);
+	const instance = providerWith(breaker);
+	assert.equal(instance.available(), true);
+
+	await withFetch(async () => new Response("upstream boom", { status: 503 }), async () => {
+		// Below the threshold the provider still advertises itself.
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+		assert.equal(instance.available(), true, "two failures must not trip the breaker");
+
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+		assert.equal(instance.available(), false, "the third transient failure must open the breaker");
+	});
+});
+
+test("one successful search closes the breaker again", async () => {
+	const breaker = new ExaAvailabilityBreaker(1, 60_000);
+	const instance = providerWith(breaker);
+
+	await withFetch(async () => new Response("boom", { status: 500 }), () =>
+		assert.rejects(instance.search({ query: "example" })));
+	assert.equal(instance.available(), false);
+
+	await withFetch(async () => mcpResponse({ result: { content: [] } }), () =>
+		instance.search({ query: "example" }));
+	assert.equal(instance.available(), true, "a healthy search must clear the failure state");
+});
+
+test("a 4xx configuration error does not trip the breaker", async () => {
+	const breaker = new ExaAvailabilityBreaker(2, 60_000);
+	const instance = providerWith(breaker);
+
+	await withFetch(async () => new Response("nope", { status: 404 }), async () => {
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+	});
+	assert.equal(instance.available(), true, "a permanent 4xx would fail identically forever; do not hide it");
+});
+
+test("anonymous 429 surfaces WEB_RATE_LIMITED with an actionable message", async () => {
+	await assert.rejects(
+		withFetch(async () => new Response("slow down", { status: 429 }),
+			() => provider().search({ query: "example" })),
+		error => error.code === "WEB_RATE_LIMITED" && /EXA_API_KEY/.test(error.message),
+	);
+});
+
+test("the keyed REST path is never hidden by the breaker", async () => {
+	const breaker = new ExaAvailabilityBreaker(1, 60_000);
+	const instance = providerWith(breaker, { apiKey: "secret" });
+
+	await withFetch(async () => new Response("boom", { status: 500 }), async () => {
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+		await assert.rejects(instance.search({ query: "example" }), error => error.code === "WEB_PROVIDER_ERROR");
+	});
+	assert.equal(instance.available(), true, "a paid endpoint failure is the caller's to see, not something to hide");
 });

@@ -49,6 +49,34 @@ peerDependencyRules:
     - '@deepseek-ai/dsh-*'
 ```
 
+### Degradation and failover
+
+The keyless channel is a shared, best-effort endpoint. The provider reports its
+own health rather than pretending to always work:
+
+- 3 consecutive transient failures (5xx, 429, network, unparseable body) open a
+  circuit breaker for 5 minutes, during which `available()` returns `false`. One
+  successful search closes it again.
+- A 4xx other than 429 does not trip it — that failure would repeat forever, so
+  hiding it would only delay the same error.
+- Anonymous 429s raise `WEB_RATE_LIMITED` (not a generic `WEB_PROVIDER_ERROR`)
+  with a message naming `EXA_API_KEY`.
+- The keyed REST path ignores the breaker: a paid endpoint's failures are yours
+  to see.
+
+**Whether that turns into automatic failover is a harness-side decision.** The
+seam picks exactly one usable provider and has no priority chain — with two
+usable providers it raises `WEB_PROVIDER_AMBIGUOUS`. So:
+
+- Pinning `searchProvider: exa` gives deterministic selection but *no* fallback:
+  when the breaker opens you get `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`.
+- Leaving `searchProvider` unset gives up determinism: a degraded Exa stops
+  being a candidate, but if another provider (say `deepseek-official` with a
+  valid `DEEPSEEK_API_KEY`) is also usable, the seam reports ambiguity instead
+  of choosing it.
+
+Pick whichever failure mode you prefer; the plugin cannot choose for you.
+
 ### Building from source
 
 ```sh

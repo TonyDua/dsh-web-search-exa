@@ -260,6 +260,96 @@ function mapMcpSections(sections: readonly string[]): WebSearchResult['sources']
 // ── Provider ────────────────────────────────────────────────────────────────
 
 /**
+ * How long a tripped breaker keeps `available()` false before the next search
+ * is allowed to probe the anonymous endpoint again.
+ */
+export const DEFAULT_BREAKER_COOLDOWN_MS = 300_000;
+
+/**
+ * Consecutive transient failures that trip the breaker.
+ *
+ * Only 5xx, 429, and network-level failures count: they say the anonymous
+ * endpoint is having a bad time, not that the request was wrong. A 4xx (other
+ * than 429) is a configuration error and would fail identically forever, so it
+ * deliberately does NOT trip the breaker — hiding a bad endpoint behind a
+ * cooldown would just delay the same error.
+ */
+export const DEFAULT_BREAKER_THRESHOLD = 3;
+
+/** A failure worth retrying later, as opposed to a permanent configuration error. */
+export class ExaTransientError extends WebError {
+	constructor(message: string, cause?: unknown) {
+		super(message, 'WEB_PROVIDER_ERROR', cause === undefined ? undefined : { cause });
+		this.name = 'ExaTransientError';
+	}
+}
+
+/**
+ * A rate limit, kept distinct from a generic provider failure so the model (and
+ * a human reading the transcript) can tell "Exa is throttling the keyless
+ * channel, configure a key" apart from "the network is broken".
+ *
+ * `code` is an open string in the seam's vocabulary, so a plugin-specific code
+ * is the supported way to route this; consumers must tolerate unknown codes.
+ */
+export class ExaRateLimitError extends WebError {
+	constructor(message: string) {
+		super(message, 'WEB_RATE_LIMITED');
+		this.name = 'ExaRateLimitError';
+	}
+}
+
+/**
+ * Consecutive-transient-failure breaker for the keyless path.
+ *
+ * The public MCP endpoint is best-effort: when it is throttling or down, every
+ * search would otherwise fail. Reporting that state through {@link
+ * ExaSearchProvider.available} is what lets a deployment recover — the seam
+ * skips an unavailable provider, so an unconfigured profile falls back to
+ * another registered provider instead of surfacing a hard error.
+ *
+ * State is per provider instance (one per plugin mount) and never persisted:
+ * a restart is a fresh chance, and one successful search resets the count.
+ */
+export class ExaAvailabilityBreaker {
+	readonly #threshold: number;
+	readonly #cooldownMs: number;
+	#consecutiveFailures = 0;
+	#openedAt: number | undefined;
+
+	constructor(threshold: number = DEFAULT_BREAKER_THRESHOLD, cooldownMs: number = DEFAULT_BREAKER_COOLDOWN_MS) {
+		this.#threshold = threshold;
+		this.#cooldownMs = cooldownMs;
+	}
+
+	/** True while the breaker is open and the cooldown has not elapsed. */
+	get blocked(): boolean {
+		if (this.#openedAt === undefined) return false;
+		return Date.now() - this.#openedAt < this.#cooldownMs;
+	}
+
+	/** Record one successful operation: the endpoint is healthy again. */
+	succeeded(): void {
+		this.#consecutiveFailures = 0;
+		this.#openedAt = undefined;
+	}
+
+	/** Record one transient failure, opening the breaker at the threshold. */
+	failed(): void {
+		this.#consecutiveFailures += 1;
+		if (this.#consecutiveFailures >= this.#threshold) this.#openedAt = Date.now();
+	}
+}
+
+/**
+ * True for an HTTP status that will keep failing until the endpoint recovers.
+ * 429 is included: the keyless channel is throttled, not misconfigured.
+ */
+function isTransientStatus(status: number): boolean {
+	return status === 429 || status >= 500;
+}
+
+/**
  * Project one resolved configuration section into the options the provider
  * serves its next search with. Called per operation so live Settings edits
  * take effect on the next search.
@@ -294,10 +384,9 @@ function resolveSearchURL(options: ExaSearchProviderOptions): string {
  * restart, and removing it falls back to the anonymous endpoint.
  */
 export class ExaSearchProvider implements WebSearchProvider {
-	readonly id: string;
-
 	readonly #resolveOptions: ExaOptionsResolver;
 	readonly #resolveApiKey: ExaApiKeyResolver;
+	readonly #breaker: ExaAvailabilityBreaker;
 
 	/**
 	 * @param resolveOptions - thunk returning the options for the NEXT
@@ -306,15 +395,41 @@ export class ExaSearchProvider implements WebSearchProvider {
 	 * DeepSeek provider).
 	 * @param resolveApiKey - optional key resolver; dsh hosts pass their
 	 * launch-environment snapshot while direct users retain process.env fallback.
+	 * @param breaker - health tracker for the keyless path; injectable so tests
+	 * need no clock control.
 	 */
-	constructor(resolveOptions: ExaOptionsResolver, resolveApiKey: ExaApiKeyResolver = resolveApiKeyFromProcess) {
+	constructor(
+		resolveOptions: ExaOptionsResolver,
+		resolveApiKey: ExaApiKeyResolver = resolveApiKeyFromProcess,
+		breaker: ExaAvailabilityBreaker = new ExaAvailabilityBreaker(),
+	) {
 		this.#resolveOptions = resolveOptions;
 		this.#resolveApiKey = resolveApiKey;
-		this.id = resolveOptions().providerId ?? DEFAULT_PROVIDER_ID;
+		this.#breaker = breaker;
 	}
 
-	/** The anonymous MCP path needs no credentials, so only local options gate use. */
+	/**
+	 * Read per operation rather than frozen at construction: a Settings edit to
+	 * `providerId` must not leave the provider reporting an id the registry does
+	 * not key it under. Registering under the new id is the user's job (the
+	 * loader re-reads config on reload), but the reported value stays honest.
+	 */
+	get id(): string {
+		return this.#resolveOptions().providerId ?? DEFAULT_PROVIDER_ID;
+	}
+
+	/**
+	 * Cheap local usability check — no network call, per the seam contract.
+	 *
+	 * False when the local options are unusable, or while the keyless channel's
+	 * breaker is open after repeated transient failures. Reporting that honestly
+	 * is what lets the seam fall back to another provider instead of failing the
+	 * search: a pinned `searchProvider` surfaces
+	 * `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`, an unpinned one simply selects
+	 * another registered provider.
+	 */
 	available(): boolean {
+		if (this.#breaker.blocked) return false;
 		const options = this.#resolveOptions();
 		return (
 			URL.canParse(resolveSearchURL(options)) &&
@@ -328,9 +443,17 @@ export class ExaSearchProvider implements WebSearchProvider {
 		throwIfAborted(signal);
 		const options = this.#resolveOptions();
 		const apiKey = this.#resolveApiKey(options);
-		return apiKey !== undefined
-			? await this.#restSearch(request, apiKey, options, signal)
-			: await this.#anonymousMcpSearch(request, options, signal);
+		// The keyed REST path is a paid, authenticated endpoint: a failure there
+		// is the caller's problem to see, not a reason to hide the provider.
+		if (apiKey !== undefined) return await this.#restSearch(request, apiKey, options, signal);
+		try {
+			const result = await this.#anonymousMcpSearch(request, options, signal);
+			this.#breaker.succeeded();
+			return result;
+		} catch (error) {
+			if (error instanceof ExaTransientError) this.#breaker.failed();
+			throw error;
+		}
 	}
 
 	/** REST search with an API key: `POST {apiURL}` with Bearer auth. */
@@ -433,16 +556,17 @@ export class ExaSearchProvider implements WebSearchProvider {
 			if (signal?.aborted === true || isAbortError(error)) {
 				throw new WebError('Exa anonymous search aborted', 'WEB_ABORTED', { cause: signal?.reason ?? error });
 			}
-			throw new WebError(`Exa anonymous search request failed: ${String(error)}`, 'WEB_PROVIDER_ERROR', {
-				cause: error,
-			});
+			throw new ExaTransientError(`Exa anonymous search request failed: ${String(error)}`, error);
 		}
 		if (!response.ok) {
 			if (response.status === 429) {
-				throw new WebError(
-					'Exa anonymous MCP rate limit reached (HTTP 429); configure an EXA_API_KEY for higher limits',
-					'WEB_PROVIDER_ERROR',
+				throw new ExaRateLimitError(
+					'Exa anonymous MCP rate limit reached (HTTP 429). The keyless channel is shared and throttled; ' +
+						'set EXA_API_KEY (or a literal "apiKey" in the web-search-exa config) to use the keyed REST path.',
 				);
+			}
+			if (isTransientStatus(response.status)) {
+				throw new ExaTransientError(`Exa anonymous MCP error (HTTP ${response.status})`);
 			}
 			throw new WebError(`Exa anonymous MCP error (HTTP ${response.status})`, 'WEB_PROVIDER_ERROR');
 		}
@@ -453,12 +577,10 @@ export class ExaSearchProvider implements WebSearchProvider {
 			if (signal?.aborted === true || isAbortError(error)) {
 				throw new WebError('Exa anonymous search aborted', 'WEB_ABORTED', { cause: signal?.reason ?? error });
 			}
-			throw new WebError(`Exa returned an unprocessable response body: ${String(error)}`, 'WEB_PROVIDER_ERROR', {
-				cause: error,
-			});
+			throw new ExaTransientError(`Exa returned an unprocessable response body: ${String(error)}`, error);
 		}
 		if (payload === null) {
-			throw new WebError('Exa anonymous MCP returned an unprocessable response body', 'WEB_PROVIDER_ERROR');
+			throw new ExaTransientError('Exa anonymous MCP returned an unprocessable response body');
 		}
 		if (payload.error != null) {
 			throw new WebError(

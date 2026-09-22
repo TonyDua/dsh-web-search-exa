@@ -1,5 +1,5 @@
 import z from "@deepseek-ai/schemastery";
-import { WebSearchProvider, WebSearchRequest, WebSearchResult } from "@deepseek-ai/dsh-web";
+import { WebError, WebSearchProvider, WebSearchRequest, WebSearchResult } from "@deepseek-ai/dsh-web";
 import { Context } from "@deepseek-ai/cordis";
 //#region src/types.d.ts
 /**
@@ -125,6 +125,58 @@ export declare function resolveApiKeyFromProcess(options: ExaSearchProviderOptio
  */
 export declare function resolveApiKey(options: ExaSearchProviderOptions, environment?: ExaKeyEnvironment): string | undefined;
 /**
+ * How long a tripped breaker keeps `available()` false before the next search
+ * is allowed to probe the anonymous endpoint again.
+ */
+export declare const DEFAULT_BREAKER_COOLDOWN_MS = 300000;
+/**
+ * Consecutive transient failures that trip the breaker.
+ *
+ * Only 5xx, 429, and network-level failures count: they say the anonymous
+ * endpoint is having a bad time, not that the request was wrong. A 4xx (other
+ * than 429) is a configuration error and would fail identically forever, so it
+ * deliberately does NOT trip the breaker — hiding a bad endpoint behind a
+ * cooldown would just delay the same error.
+ */
+export declare const DEFAULT_BREAKER_THRESHOLD = 3;
+/** A failure worth retrying later, as opposed to a permanent configuration error. */
+export declare class ExaTransientError extends WebError {
+  constructor(message: string, cause?: unknown);
+}
+/**
+ * A rate limit, kept distinct from a generic provider failure so the model (and
+ * a human reading the transcript) can tell "Exa is throttling the keyless
+ * channel, configure a key" apart from "the network is broken".
+ *
+ * `code` is an open string in the seam's vocabulary, so a plugin-specific code
+ * is the supported way to route this; consumers must tolerate unknown codes.
+ */
+export declare class ExaRateLimitError extends WebError {
+  constructor(message: string);
+}
+/**
+ * Consecutive-transient-failure breaker for the keyless path.
+ *
+ * The public MCP endpoint is best-effort: when it is throttling or down, every
+ * search would otherwise fail. Reporting that state through {@link
+ * ExaSearchProvider.available} is what lets a deployment recover — the seam
+ * skips an unavailable provider, so an unconfigured profile falls back to
+ * another registered provider instead of surfacing a hard error.
+ *
+ * State is per provider instance (one per plugin mount) and never persisted:
+ * a restart is a fresh chance, and one successful search resets the count.
+ */
+export declare class ExaAvailabilityBreaker {
+  #private;
+  constructor(threshold?: number, cooldownMs?: number);
+  /** True while the breaker is open and the cooldown has not elapsed. */
+  get blocked(): boolean;
+  /** Record one successful operation: the endpoint is healthy again. */
+  succeeded(): void;
+  /** Record one transient failure, opening the breaker at the threshold. */
+  failed(): void;
+}
+/**
  * Project one resolved configuration section into the options the provider
  * serves its next search with. Called per operation so live Settings edits
  * take effect on the next search.
@@ -139,7 +191,6 @@ export declare function resolveOptions(section: ExaSearchProviderConfig): ExaSea
  */
 export declare class ExaSearchProvider implements WebSearchProvider {
   #private;
-  readonly id: string;
   /**
    * @param resolveOptions - thunk returning the options for the NEXT
    * operation, snapshotted once at each operation's entry so one search
@@ -147,9 +198,27 @@ export declare class ExaSearchProvider implements WebSearchProvider {
    * DeepSeek provider).
    * @param resolveApiKey - optional key resolver; dsh hosts pass their
    * launch-environment snapshot while direct users retain process.env fallback.
+   * @param breaker - health tracker for the keyless path; injectable so tests
+   * need no clock control.
    */
-  constructor(resolveOptions: ExaOptionsResolver, resolveApiKey?: ExaApiKeyResolver);
-  /** The anonymous MCP path needs no credentials, so only local options gate use. */
+  constructor(resolveOptions: ExaOptionsResolver, resolveApiKey?: ExaApiKeyResolver, breaker?: ExaAvailabilityBreaker);
+  /**
+   * Read per operation rather than frozen at construction: a Settings edit to
+   * `providerId` must not leave the provider reporting an id the registry does
+   * not key it under. Registering under the new id is the user's job (the
+   * loader re-reads config on reload), but the reported value stays honest.
+   */
+  get id(): string;
+  /**
+   * Cheap local usability check — no network call, per the seam contract.
+   *
+   * False when the local options are unusable, or while the keyless channel's
+   * breaker is open after repeated transient failures. Reporting that honestly
+   * is what lets the seam fall back to another provider instead of failing the
+   * search: a pinned `searchProvider` surfaces
+   * `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`, an unpinned one simply selects
+   * another registered provider.
+   */
   available(): boolean;
   search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult>;
 }
