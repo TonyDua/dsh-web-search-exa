@@ -19,12 +19,26 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_ROOT="${DSH_COMPAT_DIR:-${TMPDIR:-/tmp}/dsh-compat}"
 TSC="$REPO_ROOT/node_modules/typescript/bin/tsc"
 
+# cordis is pinned per dsh line rather than taken from `latest`. The 0.1.5 and
+# 0.1.6 packages peer `@deepseek-ai/cordis` at an exact version (4.0.2) while
+# `latest` has moved to 4.0.4, so resolving `latest` makes the harness's own
+# siblings disagree and the plugin then cannot install strictly beside them —
+# a host-side conflict that looks like ours from the outside. 0.1.7 moved to
+# ^4.0.3, where the exact pin is gone.
+#
+# @deepseek-ai/dsh-llm is installed explicitly, not for tests to import: dsh-web
+# re-exports WebError extends HarnessError FROM dsh-llm, so without it
+# `tsc` cannot resolve the base class and silently degrades it to an
+# unconstructable `any` — typecheck then fails in a way that looks like a bug
+# in this plugin. npm does not auto-install it (peer auto-install is off in
+# these throwaway roots), so a clean machine needs it listed.
+#
 # dsh >= 0.1.7 peers cordis ^4.0.3 while the cordis `latest` dist-tag still
 # points at 4.0.2, so pin per version rather than trusting `latest`.
 cordis_for() {
   case "$1" in
     0.1.7-*|0.1.8-*|0.2.*) echo 4.0.3 ;;
-    *) echo latest ;;
+    *) echo 4.0.2 ;;
   esac
 }
 
@@ -41,9 +55,16 @@ install_version() {
   local v="$1" dir="$WORK_ROOT/v$1"
   mkdir -p "$dir"
   [ -f "$dir/package.json" ] || echo '{"name":"dsh-compat","private":true,"type":"module"}' > "$dir/package.json"
-  ( cd "$dir" && npm install --silent --no-audit --no-fund \
+  # `--legacy-peer-deps` is load-bearing, not a shortcut. Some published dsh
+  # versions carry internally unsatisfiable peer constraints — 0.1.5-rc.2 peers
+  # dsh-llm@^0.1.5-rc.2 (never published), and 0.1.5-rc.3 peers cordis@4.0.2
+  # exactly while its own sibling packages want ^4.0.3 — so a clean
+  # `npm install` of the harness alone fails under npm's strict resolver, with
+  # no involvement from this plugin. We are building a host to test against,
+  # not validating the harness's own dependency graph.
+  ( cd "$dir" && npm install --silent --no-audit --no-fund --legacy-peer-deps \
       "@deepseek-ai/dsh-web@$v" "@deepseek-ai/dsh-settings@$v" \
-      "@deepseek-ai/dsh-launch-environment@$v" \
+      "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" \
       "@deepseek-ai/cordis@$(cordis_for "$v")" "@types/node@^22.19.0" ) \
     > "$WORK_ROOT/install-$v.log" 2>&1
 }
@@ -82,6 +103,13 @@ verify_version() {
 # versions while npm rejected it on 13 of them with ERESOLVE. Only an
 # end-to-end `npm install` catches that, so this packs the real tarball and
 # installs it.
+#
+# Deliberately two phases:
+#   1. the host, with --legacy-peer-deps — several dsh releases have internally
+#      unsatisfiable peers (0.1.7-alpha.1 wants cordis ^4.0.3 while its siblings
+#      pin 4.0.2), which has nothing to do with this plugin
+#   2. this plugin, WITHOUT that flag, so npm actually enforces the peer ranges
+#      we ship. Installing the plugin loosely would make this check vacuous.
 npm_installs() {
   local v="$1" pack="$WORK_ROOT/npm-pack" work
   mkdir -p "$pack"
@@ -101,14 +129,24 @@ npm_installs() {
         "@deepseek-ai/dsh-web": version,
         "@deepseek-ai/dsh-settings": version,
         "@deepseek-ai/dsh-launch-environment": version,
+        "@deepseek-ai/dsh-llm": version,
         "@deepseek-ai/cordis": cordis,
       },
     }, null, 2));
   ' "$tarball" "$v" "$cordis" "$work"
-  if ( cd "$work" && npm install --no-audit --no-fund >/dev/null 2>&1 ); then
+  local host_ok plugin_ok
+  ( cd "$work" && npm install --no-audit --no-fund --legacy-peer-deps \
+      "@deepseek-ai/dsh-web@$v" "@deepseek-ai/dsh-settings@$v" \
+      "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" \
+      "@deepseek-ai/cordis@$cordis" >/dev/null 2>&1 ) && host_ok=1 || host_ok=0
+  # The plugin is installed on its own, strictly, so an unsatisfiable peer
+  # range of ours is what fails here — not the host's own graph.
+  ( cd "$work" && npm install --no-audit --no-fund "$tarball" >/dev/null 2>&1 ) \
+    && plugin_ok=1 || plugin_ok=0
+  if [ "$host_ok" = 1 ] && [ "$plugin_ok" = 1 ]; then
     printf '%-16s npm install OK\n' "$v"; rm -rf "$work"; return 0
   fi
-  printf '%-16s npm install FAILED (ERESOLVE?)\n' "$v"
+  printf '%-16s npm install FAILED (host=%s plugin=%s)\n' "$v" "$host_ok" "$plugin_ok"
   rm -rf "$work"; return 1
 }
 
