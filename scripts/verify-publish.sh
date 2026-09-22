@@ -55,8 +55,11 @@ cat > "$DSH_HOME/profiles/$PROFILE/cordis.patch.yml" <<'YAML'
     fetchProvider: http
 YAML
 
-note "4. live headless search with NO api key in the environment"
-env -u EXA_API_KEY -u DEEPSEEK_API_KEY dsh --profile "$PROFILE" \
+note "4. live headless search with no EXA key in the environment"
+# Only EXA_API_KEY is unset. The agent needs DEEPSEEK_API_KEY to run the task at
+# all, and search selection does not depend on it because the profile pins
+# searchProvider: exa — with no EXA key the provider takes the anonymous path.
+env -u EXA_API_KEY dsh --profile "$PROFILE" \
   "Call the web_search tool once with query 'deepseek harness plugin'. Report ONLY the number of sources." \
   2>/tmp/verify-publish-stderr.log
 echo "--- loader errors (empty is good) ---"
