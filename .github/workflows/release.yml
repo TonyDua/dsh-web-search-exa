@@ -1,0 +1,146 @@
+name: release
+
+# Fires on a version tag. Builds the plugin, verifies the packed artifact
+# across every dsh version this package claims to support, and publishes:
+#   - the tarball as a GitHub Release asset (always)
+#   - the same tarball to npm (only when the NPM_TOKEN secret exists)
+#
+# Publishing from CI rather than a laptop is deliberate: the asset users
+# install is then the exact artifact the matrix verified, not a local rebuild
+# that merely resembles it.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: write # create the release and upload the asset
+  actions: read   # read this run's artifacts, used to confirm the matrix output
+
+jobs:
+  # Gate everything on the matrix: never publish an artifact that some
+  # supported dsh version cannot install.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run typecheck
+
+      - run: pnpm test
+
+      - name: Cross-version matrix
+        run: |
+          bash scripts/compat-matrix.sh | tee /tmp/matrix.txt
+          # `dsh plugin add` runs pnpm, so pnpm passing is not enough — the
+          # matrix also runs a real `npm install` per version. Assert on those.
+          if ! grep -q '^all versions passed' /tmp/matrix.txt; then
+            echo "::error::compatibility matrix failed; not publishing"
+            exit 1
+          fi
+
+      - name: Assert the committed lib/ matches the sources
+        run: |
+          if ! git diff --quiet -- lib; then
+            echo "::error::lib/ is stale — run 'pnpm run build' and commit it."
+            git --no-pager diff --stat -- lib
+            exit 1
+          fi
+
+      - name: Upload the verified tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: '*.tgz'
+          if-no-files-found: error
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    # Exposed at job level so a step's `if` can test it: GitHub Actions cannot
+    # reference `secrets` directly in a step condition, but it can read an env
+    # var that came from one. An absent secret is the empty string, which is
+    # exactly what the publish step checks for.
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Take the tarball the matrix verified
+        uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: dist
+
+      # A stable asset name gives the README one URL that always resolves:
+      # .../releases/latest/download/dsh-web-search-exa.tgz
+      - name: Give the asset its stable name
+        run: |
+          mv dist/*.tgz dist/dsh-web-search-exa.tgz
+          ls -la dist/
+
+      - name: Sanity-check the tarball
+        run: |
+          tar tzf dist/dsh-web-search-exa.tgz
+          tar xzOf dist/dsh-web-search-exa.tgz package/package.json \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);console.log(p.name,p.version);})'
+
+      - name: Extract this version's release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > dist/notes.md
+          if [ ! -s dist/notes.md ]; then
+            echo "No CHANGELOG section for $VERSION; using a placeholder." >&2
+            printf 'Release %s\n' "$VERSION" > dist/notes.md
+          fi
+          cat dist/notes.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file dist/notes.md \
+            dist/dsh-web-search-exa.tgz
+
+      # Optional by design: the GitHub Release always works, so a missing or
+      # expired token must not fail the run. Add the NPM_TOKEN secret to turn
+      # this on.
+      - name: Publish to npm when the token is configured
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          LOCAL=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$LOCAL" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $LOCAL"
+            exit 1
+          fi
+          # Explicit registry: npm resolves the token by registry URL, and a
+          # bare "//:_authToken" does not match the API endpoint.
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
+          npm publish --access public
+          echo "Published $VERSION to npm."

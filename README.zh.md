@@ -2,13 +2,14 @@
 
 [English](README.md) | **简体中文**
 
-[![npm version](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
-[![npm downloads](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![npm 版本](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa?label=npm)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![GitHub Release](https://img.shields.io/github/v/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
+[![npm 下载量](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
 [![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
+[![dsh](https://img.shields.io/badge/dsh-0.1.2--alpha.2%20%E2%80%93%200.1.7--alpha.1-4c6?logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-339933?logo=node.js&logoColor=white)](package.json)
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
-[![dsh](https://img.shields.io/badge/dsh-0.1.2--rc.1-4c6?logo=deepseek&logoColor=white)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 > 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）提供**零配置**的 [Exa](https://exa.ai) 网页搜索：
 > **无需 API key** —— 一个 `ctx.web` seam 的 `WebSearchProvider`，内置匿名 MCP 兜底 + 带 key 的 REST 路径。
@@ -161,10 +162,26 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 
 ## 安装（装入 dsh profile）
 
-**一条命令从 npm 安装**（v0.1.4+ 自带 `dsh.bundle` manifest——bundle patch 会自动插入 provider 行，无需手动改 patch）：
+> **发布状态说明。** npm registry 上目前只有 `0.1.4`。它之后的所有内容——让插件能在**每一个**已发布 dsh 版本上安装的 peer 范围修复、`src/` 构建工程重构、以及对 dsh 0.1.7 的支持——都已在 `main` 上，并以 **GitHub Release** 形式发布，但**尚未上 npm**，因为 npm 发布暂时受账号访问问题阻塞。**在解决之前，请从 GitHub Release 安装**，否则你拿到的仍是旧版。
+
+**从 GitHub Release 安装**（当前推荐——npm 落后期间请用这个）：
+
+```powershell
+dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
+```
+
+Release 附件就是 CI 构建并验证过的 `npm pack` 产物本身，与 npm 本应提供的完全一致。
+
+**从 npm 安装**（当前为 `0.1.4`；v0.1.4+ 自带 `dsh.bundle` manifest，bundle patch 会自动插入 provider 行，无需手动改 patch）：
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
+```
+
+**从仓库安装**（跟随 `main`，包含尚未发布的改动）：
+
+```powershell
+dsh plugin --profile web add github:TonyDua/dsh-web-search-exa
 ```
 
 重启 `dsh web` 生效。**无 API key 时**官方 DeepSeek 搜索提供方不可用，seam 会自动选中本插件——完全零配置。**配了 key 时**，需在你的 `$DSH_HOME/profiles/web/cordis.patch.yml`（在 bundle patch 之后应用）里显式选中 Exa：

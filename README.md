@@ -2,13 +2,14 @@
 
 **English** | [简体中文](README.zh.md)
 
-[![npm version](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![npm version](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa?label=npm)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
+[![GitHub release](https://img.shields.io/github/v/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
 [![npm downloads](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
 [![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
+[![dsh](https://img.shields.io/badge/dsh-0.1.2--alpha.2%20%E2%80%93%200.1.7--alpha.1-4c6?logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-339933?logo=node.js&logoColor=white)](package.json)
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
-[![dsh](https://img.shields.io/badge/dsh-0.1.2--rc.1-4c6?logo=deepseek&logoColor=white)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 > Zero-config [Exa](https://exa.ai) web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh):
 > **no API key required** — a `WebSearchProvider` for the `ctx.web` seam with an
@@ -200,11 +201,34 @@ the REST path automatically).
 
 ## Installation (into a dsh profile)
 
-**One command from npm** (v0.1.4+ ships the `dsh.bundle` manifest — the bundle
-patch inserts the provider row, so no manual patch editing is needed):
+> **Publishing status.** The npm registry currently holds `0.1.4`. Everything
+> after it — the peer-range fix that makes the plugin installable on every
+> published dsh version, the `src/` build rework, and dsh 0.1.7 support — is on
+> `main` and shipped as a **GitHub Release**, but is not on npm yet, because
+> npm publishing is temporarily blocked on account access. **Until that is
+> resolved, install from the GitHub Release rather than from npm**, or you will
+> get the older build.
+
+**From a GitHub Release** (current — use this while npm is behind):
+
+```powershell
+dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
+```
+
+The release asset is the exact `npm pack` artifact CI builds and verifies, so
+it is the same thing npm would have served.
+
+**From npm** (currently `0.1.4`; v0.1.4+ ships the `dsh.bundle` manifest, so the
+bundle patch inserts the provider row with no manual patch editing):
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
+```
+
+**From the repository** (tracks `main`, includes work not yet released):
+
+```powershell
+dsh plugin --profile web add github:TonyDua/dsh-web-search-exa
 ```
 
 Restart `dsh web`. **Without an API key** the official DeepSeek search
