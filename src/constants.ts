@@ -43,8 +43,14 @@ export const MCP_TOOL = 'web_search_exa';
  */
 export const MCP_SOURCE = 'dsh-anything';
 
-/** User agent for REST requests. */
-export const USER_AGENT = 'deepseek-harness-exa/0.1.4';
+/**
+ * User agent for REST requests.
+ *
+ * Annotated `: string` rather than left inferred: this constant is re-exported
+ * from the package root, and a `const` string infers a LITERAL type, which
+ * would bake today's version number into every consumer's type-checking.
+ */
+export const USER_AGENT: string = 'deepseek-harness-exa/0.1.5';
 
 /** Snippet cap for text-derived snippets (matching oh-my-pi's choice). */
 export const MAX_SNIPPET_CHARS = 500;
