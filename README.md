@@ -194,8 +194,9 @@ The anonymous MCP path sends no credentials; attribution rides the
 `x-exa-source: dsh-anything` header. Results are normalized to the seam's
 `WebSearchSource` shape (`url`, `title`, `snippet`, `publishedAt`) and the seam
 enforces `maxResults` on the way back. Anonymous usage is rate-limited by Exa:
-an HTTP 429 surfaces as a `WEB_PROVIDER_ERROR` with a hint to configure an API
-key (which also switches to the REST path automatically).
+an HTTP 429 surfaces as a distinct `WEB_RATE_LIMITED` code — not a generic
+provider failure — with a hint to configure an API key (which also switches to
+the REST path automatically).
 
 ## Installation (into a dsh profile)
 
