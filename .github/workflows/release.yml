@@ -151,10 +151,22 @@ jobs:
       # Optional by design: the GitHub Release always works, so a missing or
       # expired token must not fail the run. Add the NPM_TOKEN secret to turn
       # this on.
+      #
+      # The guard is inside the shell, not a step `if`. A step condition cannot
+      # reference `secrets`, and routing the value through an env var does not
+      # help either: GitHub substitutes an undefined secret with the literal
+      # string "NPM_TOKEN", which is non-empty and sailed through the old
+      # `!= ''` check — the step then ran and npm failed with a confusing 404
+      # ("is not in this registry") instead of saying the token was missing.
       - name: Publish to npm when the token is configured
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         run: |
+          set -eu
           VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "${NODE_AUTH_TOKEN:-}" ] || [ "$NODE_AUTH_TOKEN" = "NPM_TOKEN" ]; then
+            echo "NPM_TOKEN is not configured — skipping the npm publish."
+            echo "The GitHub Release above is unaffected; this step is optional."
+            exit 0
+          fi
           LOCAL=$(node -p "require('./package.json').version")
           if [ "$VERSION" != "$LOCAL" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match package.json version $LOCAL"
