@@ -20,15 +20,46 @@ Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Ha
 
 `@tonydua/dsh-web-search-exa@0.1.4` is tested and supported with:
 
-- `@deepseek-ai/dsh` `0.1.2-rc.1` (the current npm `latest` release)
-- `@deepseek-ai/dsh-web` `0.1.2-rc.1`
-- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` (optional; enables live Settings integration)
-- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1`
-- `@deepseek-ai/cordis` `4.0.2`
-- Node.js `>=18`
+- `@deepseek-ai/dsh` `0.1.5-rc.2` — verified end to end: a real
+  `dsh --profile headless` task searched through the anonymous MCP path with no
+  API key present
+- `@deepseek-ai/dsh-web` `0.1.2-rc.1` through `0.1.5-rc.3`
+- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` through `0.1.5-rc.3` (optional; enables live Settings integration)
+- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1` through `0.1.5-rc.3`
+- `@deepseek-ai/cordis` `>=4.0.2`
+- Node.js `>=22.19.0` (the harness's own floor)
 
-The dsh `0.1.2-rc.1` API is the compatibility baseline. The `0.1.5-alpha.1`
-alpha line is not part of this release's tested support matrix.
+The peer ranges are deliberately open-ended (`>=0.1.2-rc.1`). The `ctx.web`
+seam APIs this provider uses — `registerSearchProvider`, the
+`WebSearchProvider` / `WebSearchResult` shapes, `settings.installSection`, and
+`launchEnvironmentOf` — are unchanged between `0.1.2-rc.1` and `0.1.5-rc.2`, so
+a closed range would reject hosts the plugin works on. `0.1.2-rc.1` stays the
+oldest tested baseline.
+
+### Profile-install note
+
+dsh profiles set `autoInstallPeers: false`, and the harness's own services are
+supplied at runtime by the dsh host instead of being resolved by pnpm. Add this
+to the profile's `pnpm-workspace.yaml` so `dsh plugin add` stays warning-free:
+
+```yaml
+peerDependencyRules:
+  ignoreMissing:
+    - '@deepseek-ai/cordis'
+    - '@deepseek-ai/dsh-*'
+```
+
+### Building from source
+
+```sh
+pnpm install
+pnpm run build      # tsdown -> lib/index.js + lib/index.d.ts
+pnpm run typecheck  # tsc --noEmit
+pnpm test           # builds, then runs the node:test suite against lib/
+```
+
+`src/` is the source of truth; `lib/` is committed because both the published
+tarball and git-based installs consume it.
 
 ## Features
 

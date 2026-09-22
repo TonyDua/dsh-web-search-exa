@@ -19,14 +19,42 @@
 
 `@tonydua/dsh-web-search-exa@0.1.4` 已针对以下版本测试并支持：
 
-- `@deepseek-ai/dsh` `0.1.2-rc.1`（当前 npm `latest` 发布线）
-- `@deepseek-ai/dsh-web` `0.1.2-rc.1`
-- `@deepseek-ai/dsh-settings` `0.1.2-rc.1`（可选；用于启用实时 Settings 集成）
-- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1`
-- `@deepseek-ai/cordis` `4.0.2`
-- Node.js `>=18`
+- `@deepseek-ai/dsh` `0.1.5-rc.2` —— 已端到端验证：在无任何 API key 的前提下，用真实的
+  `dsh --profile headless` 任务走通了匿名 MCP 搜索路径
+- `@deepseek-ai/dsh-web` `0.1.2-rc.1` 至 `0.1.5-rc.3`
+- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` 至 `0.1.5-rc.3`（可选；用于启用实时 Settings 集成）
+- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1` 至 `0.1.5-rc.3`
+- `@deepseek-ai/cordis` `>=4.0.2`
+- Node.js `>=22.19.0`（与 harness 自身的下限一致）
 
-dsh `0.1.2-rc.1` 是本版本的兼容基线；`0.1.5-alpha.1` alpha 线不在本版本的测试支持矩阵内。
+peer 范围刻意写成开区间（`>=0.1.2-rc.1`）：本 provider 用到的 `ctx.web` seam API
+——`registerSearchProvider`、`WebSearchProvider` / `WebSearchResult` 形状、
+`settings.installSection`、`launchEnvironmentOf`——在 `0.1.2-rc.1` 到 `0.1.5-rc.2`
+之间没有变化，写死闭区间反而会拒绝掉实际可用的 host。`0.1.2-rc.1` 仍是最老的测试基线。
+
+### profile 安装注意事项
+
+dsh profile 默认 `autoInstallPeers: false`，且 harness 自身的服务由 dsh 宿主在运行时
+提供、并不经 pnpm 解析。把下面这段加进 profile 的 `pnpm-workspace.yaml`，
+`dsh plugin add` 就不会再报警告：
+
+```yaml
+peerDependencyRules:
+  ignoreMissing:
+    - '@deepseek-ai/cordis'
+    - '@deepseek-ai/dsh-*'
+```
+
+### 从源码构建
+
+```sh
+pnpm install
+pnpm run build      # tsdown -> lib/index.js + lib/index.d.ts
+pnpm run typecheck  # tsc --noEmit
+pnpm test           # 先构建，再对 lib/ 跑 node:test 套件
+```
+
+`src/` 是唯一事实来源；`lib/` 仍然提交进仓库，因为 npm 发布包与基于 git 的安装都依赖它。
 
 ## 特性
 

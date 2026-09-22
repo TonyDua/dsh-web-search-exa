@@ -1,0 +1,28 @@
+{
+  // Matches the toolchain the DeepSeek Harness repo itself uses for its
+  // packages: tsc/tsdown over ES2024 ESM, with no emit here (tsdown owns the
+  // build) so `pnpm typecheck` and `pnpm build` can never disagree about what
+  // "compiles" means.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **TypeScript source tree** (`src/`) — the implementation is now real source
+  rather than only a committed compile artifact: `constants.ts`, `types.ts`,
+  `provider.ts`, and `index.ts`, carrying the JSDoc the bundle used to hold.
+- **Build toolchain** matching the harness's own packages: `tsdown` bundles
+  `src/index.ts` to `lib/index.js` and rolls the declarations into
+  `lib/index.d.ts`; `tsc --noEmit` gates types.
+- `pnpm run build`, `pnpm run typecheck`, `pnpm run test:only`, and a
+  `prepublishOnly` build hook so the tarball cannot ship stale artifacts.
+
+### Changed
+
+- **Peer ranges are no longer pinned to `0.1.2-rc.1`.** They are now open-ended
+  (`>=0.1.2-rc.1`, `@deepseek-ai/cordis` `>=4.0.2`) because semver excludes
+  pre-release versions from ordinary ranges: `^0.1.2-rc.1` did **not** match
+  `0.1.5-rc.2`, so every install on the 0.1.5 line reported missing peers even
+  though the plugin worked. `0.1.2-rc.1` remains the oldest tested baseline.
+- `@deepseek-ai/dsh-settings` is now declared an **optional** peer
+  (`peerDependenciesMeta`): the provider registers whether or not a settings
+  service is mounted, so a keyless profile without the Settings UI is supported.
+- `engines.node` raised to `>=22.19.0`, matching the harness.
+- **Declarations are generated, not hand-written.** The former
+  `lib/types/index.d.ts` was maintained by hand next to the bundle and could
+  drift from it; types now come from `src/` and land in `lib/index.d.ts`.
+- `README` gains a supported-version matrix, the profile `peerDependencyRules`
+  recipe that silences host-provided peer warnings, and source-build steps.
+
+### Verified
+
+- 8/8 `node:test` cases pass against the rebuilt artifact on dsh `0.1.5-rc.2`.
+- End-to-end: `dsh --profile headless` searched through the anonymous MCP path
+  with no API key in the environment, both before and after the rebuild.
+
 ## [0.1.4] - 2026-09-09
 
 ### Fixed

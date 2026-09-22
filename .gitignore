@@ -1,6 +1,10 @@
 # Dependencies (dev-only, never shipped — npm `files` already limits to lib/)
 node_modules/
 
+# Build/typecheck state. `lib/` itself IS committed on purpose: both the
+# published tarball and git-based installs consume the built artifact.
+*.tsbuildinfo
+
 # Pack artifacts
 *.tgz
 *.tar.gz
