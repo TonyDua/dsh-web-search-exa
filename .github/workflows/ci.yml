@@ -18,6 +18,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
+        with:
+          # Required: the action has no default and fails with "No pnpm version
+          # is specified". Declared here rather than via package.json's
+          # `packageManager`, which makes pnpm record its own binary in the
+          # lockfile as a dependency.
+          version: 12.4.1
 
       - uses: actions/setup-node@v4
         with:
@@ -55,6 +61,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
+        with:
+          # Required: the action has no default and fails with "No pnpm version
+          # is specified". Declared here rather than via package.json's
+          # `packageManager`, which makes pnpm record its own binary in the
+          # lockfile as a dependency.
+          version: 12.4.1
 
       - uses: actions/setup-node@v4
         with:
