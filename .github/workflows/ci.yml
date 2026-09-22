@@ -44,3 +44,25 @@ jobs:
 
       - name: Check the publishable tarball
         run: npm pack --dry-run
+
+  # The plugin claims to work across every published dsh line. That claim is
+  # only worth what this job proves: each version installs, typechecks against
+  # its own declarations, and passes the suite. Runs once, not per Node matrix
+  # entry, because it is slow and its result does not depend on Node.
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cross-version matrix
+        run: bash scripts/compat-matrix.sh
+

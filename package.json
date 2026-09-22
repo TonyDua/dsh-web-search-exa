@@ -53,7 +53,8 @@
     "pretest": "pnpm run build",
     "test": "node --test test/index.test.js",
     "test:only": "node --test test/index.test.js",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "compat": "bash scripts/compat-matrix.sh"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.2",

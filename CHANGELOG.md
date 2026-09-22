@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runs on dsh 0.1.7+.** `0.1.7-alpha.1` removed
+  `SettingsProvider.installSection` and replaced the service with
+  `SettingsForms`, which derives a page from the Config schema the Loader
+  already holds. The old unconditional call threw a `TypeError` there — the
+  plugin loaded but failed. `installSettingsSection()` now describes the service
+  structurally, calls `installSection` only when it is a function, and
+  otherwise returns `false`; provider registration was already outside that
+  branch and stays unconditional.
 - **`id` no longer freezes at construction.** It was assigned once in the
   constructor, so a live Settings change to `providerId` left the provider
   reporting a stale id. It is now read per access.
@@ -38,6 +46,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `prepublishOnly` build hook so the tarball cannot ship stale artifacts.
 - 6 regression tests covering the three fixes above (the frozen-`id` test was
   confirmed to fail against the previous build).
+- **Cross-version compatibility matrix** (`scripts/compat-matrix.sh`, `pnpm run
+  compat`): installs every published dsh version in isolation and typechecks +
+  tests the plugin against each one's own declarations. Wired into CI as a
+  separate job. This is the evidence behind the README's compatibility table
+  rather than a hand-written claim.
+- 3 regression tests pinning the settings-generation behaviour: the 0.1.7 shape
+  is tolerated, `apply` still registers the provider on it, and the older API
+  still adopts live Settings edits.
+
+### Audit findings (no code change needed)
+
+- The `ctx.web` seam is byte-stable across all 14 published versions:
+  `WebError` is exported from `dsh-web` and extends `HarnessError` in every one,
+  `launchEnvironmentOf` is always present, and `ctx.settings` is always mounted.
+- `0.1.7-alpha.1` peers `@deepseek-ai/cordis` `^4.0.3` while the cordis `latest`
+  dist-tag still points at `4.0.2`; `4.0.3` is published and resolves it.
 
 ### Changed
 

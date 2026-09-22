@@ -17,20 +17,41 @@
 
 ## 当前支持的版本
 
-`@tonydua/dsh-web-search-exa@0.1.4` 已针对以下版本测试并支持：
+**npm 上从 `0.1.2-alpha.2` 到 `0.1.7-alpha.1` 的每一个 dsh 版本都经过实测**，不是只写在文档里：
+每个版本会被独立安装、用**该版本自己的类型声明**做类型检查、并跑完整测试套件。
+复现命令：`bash scripts/compat-matrix.sh`。
 
-- `@deepseek-ai/dsh` `0.1.5-rc.2` —— 已端到端验证：在无任何 API key 的前提下，用真实的
-  `dsh --profile headless` 任务走通了匿名 MCP 搜索路径
-- `@deepseek-ai/dsh-web` `0.1.2-rc.1` 至 `0.1.5-rc.3`
-- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` 至 `0.1.5-rc.3`（可选；用于启用实时 Settings 集成）
-- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1` 至 `0.1.5-rc.3`
-- `@deepseek-ai/cordis` `>=4.0.2`
-- Node.js `>=22.19.0`（与 harness 自身的下限一致）
+| dsh 版本线 | 实测 | 说明 |
+|---|---|---|
+| `0.1.2-alpha.2` … `0.1.2-alpha.5` | ✅ | 最老的受支持基线 |
+| `0.1.2-rc.1` | ✅ | |
+| `0.1.3-alpha.2` | ✅ | |
+| `0.1.5-alpha.1`、`0.1.5-alpha.2` | ✅ | |
+| `0.1.5-rc.1`、`0.1.5-rc.2`、`0.1.5-rc.3` | ✅ | `0.1.5-rc.2` 另有端到端验证：无 API key 下用真实 `dsh --profile headless` 走通匿名 MCP |
+| `0.1.6-alpha.1`、`0.1.6-alpha.2` | ✅ | |
+| `0.1.7-alpha.1` | ✅ | settings 服务改了形态，见下 |
 
-peer 范围刻意写成开区间（`>=0.1.2-rc.1`）：本 provider 用到的 `ctx.web` seam API
-——`registerSearchProvider`、`WebSearchProvider` / `WebSearchResult` 形状、
-`settings.installSection`、`launchEnvironmentOf`——在 `0.1.2-rc.1` 到 `0.1.5-rc.2`
-之间没有变化，写死闭区间反而会拒绝掉实际可用的 host。`0.1.2-rc.1` 仍是最老的测试基线。
+peer 范围写成开区间（`>=0.1.2-rc.1`，`@deepseek-ai/cordis` `>=4.0.2`），因为闭区间
+无法表达"每条发布线都能用"：semver 会把 prerelease 排除在普通范围外，所以
+`^0.1.2-rc.1` 匹配不到 `0.1.5-rc.2`。
+
+### 各版本之间究竟差在哪
+
+我把 14 个版本的**真实导出面**逐个探测过，结论是 `ctx.web` seam **完全稳定**：
+`WebError` 始终由 `dsh-web` 导出且继承 `HarnessError`，`launchEnvironmentOf` 始终存在，
+`ctx.settings` 在每个版本都被挂载。真正有差异的只有两处：
+
+1. **`0.1.7-alpha.1` 换掉了 settings API。** `SettingsProvider.installSection` 被移除，
+   服务变为 `SettingsForms`，它直接从 Loader 已持有的 Config schema 派生配置页
+   （`SettingsDescriptor.schema`、`autoGenerate`）。旧代码无条件调用该方法会在该版本上抛
+   `TypeError`——插件能加载但会失败。现在改为探测该方法：存在才调用，不存在则什么都不做；
+   在 `0.1.7+` 上由 Loader 的 schema 驱动表单，插件无需注册任何东西。
+2. **`0.1.7-alpha.1` 依赖 `@deepseek-ai/cordis` `^4.0.3`**，而 cordis 的 `latest`
+   dist-tag 仍指向 `4.0.2`。`4.0.3` 已发布，只是 tag 落后。搭配 `0.1.7` 宿主时请安装
+   `@deepseek-ai/cordis@4.0.3`。矩阵脚本已按版本固化这一点。
+
+同样支持：`@deepseek-ai/dsh-web`、`dsh-settings`（可选）、`dsh-launch-environment`
+覆盖上述整个范围；Node.js `>=22.19.0`（与 harness 自身下限一致）。
 
 ### profile 安装注意事项
 

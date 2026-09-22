@@ -18,23 +18,49 @@ Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Ha
 
 ## Supported versions
 
-`@tonydua/dsh-web-search-exa@0.1.4` is tested and supported with:
+**Every published dsh version from `0.1.2-alpha.2` to `0.1.7-alpha.1` is
+verified**, not merely declared: each one is installed in isolation, the plugin
+is typechecked against that version's own declarations, and the test suite runs
+against it. Reproduce with `bash scripts/compat-matrix.sh`.
 
-- `@deepseek-ai/dsh` `0.1.5-rc.2` — verified end to end: a real
-  `dsh --profile headless` task searched through the anonymous MCP path with no
-  API key present
-- `@deepseek-ai/dsh-web` `0.1.2-rc.1` through `0.1.5-rc.3`
-- `@deepseek-ai/dsh-settings` `0.1.2-rc.1` through `0.1.5-rc.3` (optional; enables live Settings integration)
-- `@deepseek-ai/dsh-launch-environment` `0.1.2-rc.1` through `0.1.5-rc.3`
-- `@deepseek-ai/cordis` `>=4.0.2`
-- Node.js `>=22.19.0` (the harness's own floor)
+| dsh line | Verified | Notes |
+|---|---|---|
+| `0.1.2-alpha.2` … `0.1.2-alpha.5` | ✅ | oldest supported |
+| `0.1.2-rc.1` | ✅ | |
+| `0.1.3-alpha.2` | ✅ | |
+| `0.1.5-alpha.1`, `0.1.5-alpha.2` | ✅ | |
+| `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.5-rc.3` | ✅ | `0.1.5-rc.2` also verified end to end: a real `dsh --profile headless` task searched through the anonymous MCP path with no API key present |
+| `0.1.6-alpha.1`, `0.1.6-alpha.2` | ✅ | |
+| `0.1.7-alpha.1` | ✅ | settings service changed shape — see below |
 
-The peer ranges are deliberately open-ended (`>=0.1.2-rc.1`). The `ctx.web`
-seam APIs this provider uses — `registerSearchProvider`, the
-`WebSearchProvider` / `WebSearchResult` shapes, `settings.installSection`, and
-`launchEnvironmentOf` — are unchanged between `0.1.2-rc.1` and `0.1.5-rc.2`, so
-a closed range would reject hosts the plugin works on. `0.1.2-rc.1` stays the
-oldest tested baseline.
+Peer ranges are open-ended (`>=0.1.2-rc.1`, `@deepseek-ai/cordis` `>=4.0.2`)
+because a closed range cannot express "works on every published line": semver
+excludes pre-releases from ordinary ranges, so `^0.1.2-rc.1` does not match
+`0.1.5-rc.2`.
+
+### What differs across versions
+
+Auditing the real export surfaces of all 14 versions found the `ctx.web` seam
+completely stable — `WebError` is exported from `dsh-web` and still extends
+`HarnessError`, `launchEnvironmentOf` is present, and the settings service is
+mounted at `ctx.settings` in every version. Two things do differ:
+
+1. **`0.1.7-alpha.1` replaced the settings API.** `SettingsProvider.installSection`
+   is gone; the service is now `SettingsForms`, which derives a configuration
+   page from the Config schema the Loader already holds for the entry
+   (`SettingsDescriptor.schema`, `autoGenerate`). Calling the old method
+   unconditionally threw a `TypeError` on that host, so the plugin loaded but
+   failed. It now probes for the method, calls it only when present, and
+   otherwise does nothing — on `0.1.7+` the Loader's schema is what feeds the
+   form, so there is nothing to register.
+2. **`0.1.7-alpha.1` peers `@deepseek-ai/cordis` `^4.0.3`** while the cordis
+   `latest` dist-tag still points at `4.0.2`. `4.0.3` is published; the tag is
+   simply behind. Install `@deepseek-ai/cordis@4.0.3` alongside a `0.1.7` host.
+   The matrix script pins this per version.
+
+Also supported with: `@deepseek-ai/dsh-web`, `dsh-settings` (optional),
+`dsh-launch-environment` across that whole range, and Node.js `>=22.19.0` (the
+harness's own floor).
 
 ### Profile-install note
 
