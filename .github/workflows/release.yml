@@ -62,6 +62,15 @@ jobs:
             exit 1
           fi
 
+      # The matrix packs its own throwaway copies inside a temp dir, so nothing
+      # has landed in the workspace yet — this is the artifact the release job
+      # consumes. It runs after the gate above, so what gets published is the
+      # committed build rather than a locally rebuilt one.
+      - name: Pack the publishable tarball
+        run: |
+          npm pack
+          ls -la ./*.tgz
+
       - name: Upload the verified tarball
         uses: actions/upload-artifact@v4
         with:
