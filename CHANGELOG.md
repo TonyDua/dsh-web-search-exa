@@ -75,11 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Peer ranges are no longer pinned to `0.1.2-rc.1`.** They are now open-ended
-  (`>=0.1.2-rc.1`, `@deepseek-ai/cordis` `>=4.0.2`) because semver excludes
-  pre-release versions from ordinary ranges: `^0.1.2-rc.1` did **not** match
-  `0.1.5-rc.2`, so every install on the 0.1.5 line reported missing peers even
-  though the plugin worked. `0.1.2-rc.1` remains the oldest tested baseline.
+- **Peer ranges are no longer pinned to a single prerelease.** `@deepseek-ai/cordis`
+  is `>=4.0.2`, and each dsh package now enumerates one comparator per released
+  line (`>=0.1.2-alpha.2 || >=0.1.3-alpha.2 || … || >=0.1.8`) because semver
+  excludes pre-release versions from ordinary ranges: `^0.1.2-rc.1` did **not**
+  match `0.1.5-rc.2`, so every install on the 0.1.5 line reported missing peers
+  even though the plugin worked. `0.1.2-alpha.2` remains the oldest tested
+  baseline.
 - `@deepseek-ai/dsh-settings` is now declared an **optional** peer
   (`peerDependenciesMeta`): the provider registers whether or not a settings
   service is mounted, so a keyless profile without the Settings UI is supported.
