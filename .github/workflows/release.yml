@@ -3,7 +3,7 @@ name: release
 # Fires on a version tag. Builds the plugin, verifies the packed artifact
 # across every dsh version this package claims to support, and publishes:
 #   - the tarball as a GitHub Release asset (always)
-#   - the same tarball to npm (only when the NPM_TOKEN secret exists)
+#   - that same tarball to npm (only when NPM_PUBLISH is "true" and NPM_TOKEN exists)
 #
 # Publishing from CI rather than a laptop is deliberate: the asset users
 # install is then the exact artifact the matrix verified, not a local rebuild
@@ -170,5 +170,10 @@ jobs:
           # Explicit registry: npm resolves the token by registry URL, and a
           # bare "//:_authToken" does not match the API endpoint.
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
-          npm publish --access public
+          # Publish the artifact the matrix verified, by path. A bare
+          # `npm publish` re-packs the checkout instead, which makes the
+          # "npm serves the verified tarball" claim true only by determinism
+          # rather than by construction; passing the tarball makes the two
+          # files the same object rather than two builds that happen to match.
+          npm publish dist/dsh-web-search-exa.tgz --access public
           echo "Published $VERSION to npm."

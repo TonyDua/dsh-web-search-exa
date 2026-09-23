@@ -201,28 +201,22 @@ the REST path automatically).
 
 ## Installation (into a dsh profile)
 
-> **Publishing status.** The npm registry currently holds `0.1.4`. Everything
-> after it — the peer-range fix that makes the plugin installable on every
-> published dsh version, the `src/` build rework, and dsh 0.1.7 support — is on
-> `main` and shipped as a **GitHub Release**, but is not on npm yet, because
-> npm publishing is temporarily blocked on account access. **Until that is
-> resolved, install from the GitHub Release rather than from npm**, or you will
-> get the older build.
+> **One artifact, two doors.** CI packs this version's tarball, verifies it
+> against every supported dsh version, attaches it to the GitHub Release, and
+> publishes **that artifact** to npm — so the release asset and the npm tarball
+> are one file, not two builds that happen to match.
 
-**From a GitHub Release** (current — use this while npm is behind):
-
-```powershell
-dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
-```
-
-The release asset is the exact `npm pack` artifact CI builds and verifies, so
-it is the same thing npm would have served.
-
-**From npm** (currently `0.1.4`; v0.1.4+ ships the `dsh.bundle` manifest, so the
-bundle patch inserts the provider row with no manual patch editing):
+**From npm** (v0.1.4+ ships the `dsh.bundle` manifest, so the bundle patch
+inserts the provider row with no manual patch editing):
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
+```
+
+**From the GitHub Release** — the same tarball, for when npm is unreachable:
+
+```powershell
+dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
 ```
 
 **From the repository** (tracks `main`, includes work not yet released):
@@ -380,9 +374,10 @@ only; a UI card is planned for the next version. Configure through
 [In the Web panel](#in-the-web-panel)).
 
 **Q: Which dsh versions are supported?**
-This release supports dsh `0.1.2-rc.1` and its matching `dsh-web`,
-`dsh-settings`, and `dsh-launch-environment` packages. The `0.1.5-alpha.1`
-line is not tested by this release.
+Every published dsh version from `0.1.2-alpha.2` to `0.1.7-alpha.1`, plus future
+`0.1.8+` stable releases. Each version is installed in isolation, typechecked
+against its own declarations, and run through this package's test suite in CI —
+see [Why the peer range looks like that](#why-the-peer-range-looks-like-that).
 
 ## Acknowledgements
 

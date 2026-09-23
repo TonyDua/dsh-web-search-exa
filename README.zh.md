@@ -162,20 +162,18 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 
 ## 安装（装入 dsh profile）
 
-> **发布状态说明。** npm registry 上目前只有 `0.1.4`。它之后的所有内容——让插件能在**每一个**已发布 dsh 版本上安装的 peer 范围修复、`src/` 构建工程重构、以及对 dsh 0.1.7 的支持——都已在 `main` 上，并以 **GitHub Release** 形式发布，但**尚未上 npm**，因为 npm 发布暂时受账号访问问题阻塞。**在解决之前，请从 GitHub Release 安装**，否则你拿到的仍是旧版。
+> **同一个产物，两个入口。** CI 打包本版本的 tarball、在**每一个**受支持的 dsh 版本上验证、把它挂到 GitHub Release，并把**这个产物本身**发布到 npm——因此 Release 附件与 npm 上的 tarball 是同一个文件，而不是两次恰好一致的构建。
 
-**从 GitHub Release 安装**（当前推荐——npm 落后期间请用这个）：
-
-```powershell
-dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
-```
-
-Release 附件就是 CI 构建并验证过的 `npm pack` 产物本身，与 npm 本应提供的完全一致。
-
-**从 npm 安装**（当前为 `0.1.4`；v0.1.4+ 自带 `dsh.bundle` manifest，bundle patch 会自动插入 provider 行，无需手动改 patch）：
+**从 npm 安装**（v0.1.4+ 自带 `dsh.bundle` manifest，bundle patch 会自动插入 provider 行，无需手动改 patch）：
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
+```
+
+**从 GitHub Release 安装**——同一份 tarball，npm 不可达时用：
+
+```powershell
+dsh plugin --profile web add https://github.com/TonyDua/dsh-web-search-exa/releases/latest/download/dsh-web-search-exa.tgz
 ```
 
 **从仓库安装**（跟随 `main`，包含尚未发布的改动）：
@@ -286,7 +284,7 @@ dsh plugin --profile web add ../plugins/dsh-web-search-exa
 本版本只在服务端注册了 `web-search-exa` 设置命名空间；UI 卡片计划在下一版本提供。现阶段通过 `cordis.patch.yml` 或环境变量配置（见[在 Web 面板中的呈现](#在-web-面板中的呈现)）。
 
 **Q: 支持哪些 dsh 版本？**
-本版本支持 dsh `0.1.2-rc.1` 及其匹配的 `dsh-web`、`dsh-settings`、`dsh-launch-environment` 包；`0.1.5-alpha.1` 线未经本版本测试。
+`0.1.2-alpha.2` 到 `0.1.7-alpha.1` 之间**每一个**已发布的 dsh 版本，以及未来的 `0.1.8+` 稳定版。每个版本都会在 CI 里被独立安装、用该版本自己的类型声明做类型检查，并跑一遍本包的测试套件——见[为什么 peer 范围长这样](#为什么-peer-范围长这样)。
 
 ## 致谢（Acknowledgements）
 
