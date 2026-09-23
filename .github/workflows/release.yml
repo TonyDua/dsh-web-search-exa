@@ -167,13 +167,24 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match package.json version $LOCAL"
             exit 1
           fi
-          # Explicit registry: npm resolves the token by registry URL, and a
-          # bare "//:_authToken" does not match the API endpoint.
-          printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
-          # Publish the artifact the matrix verified, by path. A bare
-          # `npm publish` re-packs the checkout instead, which makes the
-          # "npm serves the verified tarball" claim true only by determinism
-          # rather than by construction; passing the tarball makes the two
-          # files the same object rather than two builds that happen to match.
-          npm publish dist/dsh-web-search-exa.tgz --access public
+          # The token reaches npm through $NPM_CONFIG_USERCONFIG: with
+          # `registry-url` set, setup-node writes
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into the file
+          # that variable points at, and npm does NOT read $HOME/.npmrc while it
+          # is set. Assert the credential is where npm actually looks instead of
+          # writing a file npm ignores.
+          NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if ! grep -q '_authToken' "$NPMRC" 2>/dev/null; then
+            echo "::error::no _authToken line in $NPMRC — npm would publish anonymously"
+            exit 1
+          fi
+          # The leading `./` is load-bearing. npm parses a bare relative
+          # `dist/dsh-web-search-exa.tgz` as the GitHub shorthand owner/repo and
+          # runs `git ls-remote ssh://git@github.com/dist/dsh-web-search-exa.tgz.git`,
+          # failing with exit 128 before it ever talks to the registry.
+          #
+          # Passing the tarball (rather than a bare `npm publish`) also keeps the
+          # "npm serves the artifact the matrix verified" claim true by
+          # construction rather than only by determinism.
+          npm publish ./dist/dsh-web-search-exa.tgz --access public
           echo "Published $VERSION to npm."
