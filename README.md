@@ -3,7 +3,7 @@
 **English** | [简体中文](README.zh.md)
 
 [![npm version](https://img.shields.io/npm/v/@tonydua/dsh-web-search-exa?label=npm)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
-[![GitHub release](https://img.shields.io/github/v/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
+[![GitHub release](https://img.shields.io/github/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
 [![npm downloads](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
 [![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.2--alpha.2%20%E2%80%93%200.1.7--alpha.1-4c6?logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
@@ -374,10 +374,11 @@ only; a UI card is planned for the next version. Configure through
 [In the Web panel](#in-the-web-panel)).
 
 **Q: Which dsh versions are supported?**
-Every published dsh version from `0.1.2-alpha.2` to `0.1.7-alpha.1`, plus future
-`0.1.8+` stable releases. Each version is installed in isolation, typechecked
-against its own declarations, and run through this package's test suite in CI —
-see [Why the peer range looks like that](#why-the-peer-range-looks-like-that).
+Every published version from `0.1.2-alpha.2` to `0.1.7-alpha.1` is tested. The
+`>=0.1.8` entry in the peer range carries future stable releases, but those have
+not been tested yet. See
+[Why the peer range looks like that](#why-the-peer-range-looks-like-that) for
+what "tested" means here.
 
 ## Acknowledgements
 
