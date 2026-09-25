@@ -11,31 +11,35 @@
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）加上 Exa 网页搜索。装完即可用，**不需要 API key**。
-
-dsh 的 `web_search` 工具需要配置搜索后端。官方包只支持 Exa 的 REST API，而它要求 API key。本包补上了免 key 的通道：没有 key 时走 Exa 官方提供的免认证公共 MCP 服务器，配了 key 就自动换成额度更高的 REST API。
-
-## 快速开始
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）加上 [Exa](https://exa.ai) 网页搜索。
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
 ```
 
-重启 `dsh web`。没有 API key 时，官方 DeepSeek 搜索提供方不可用，seam 会自动选中本插件，不需要改任何配置。模型侧的 `web_search` 工具随即走 Exa。
+重启 `dsh web` 就能用。不用配 API key，不用改配置，不用选 provider。
 
-配了 `EXA_API_KEY` 时，两个 provider 都可能可用，需要你显式选中一个，详见[安装](#安装)。
+背景，了解即可：
+
+- **Exa** 是一个搜索 API。它按关键词或语义检索网页，返回可引用的来源和摘要，不生成答案。它提供 REST API，也运营一个免认证的公共 MCP 服务器。
+- **官方的 [`dsh-web-search-exa`](https://github.com/deepseek-ai/deepseek-harness/blob/HEAD/packages/web/web-search-exa/README.zh.md)** 是 dsh 的 Exa 搜索提供方。它走 Exa 的 REST API，必须配置 API key 才有用。
+- **本包基于官方包改的。** REST 路径的实现与官方一致，补充了一条免 key 通道：没有 key 时改走 Exa 的公共 MCP 服务器，配了 key 仍走 REST。匿名接入方式参考了 oh-my-pi 项目，见[致谢](#致谢)。
+
+默认情况下不用管这几件事。只有同时用官方包，或 dsh 报错说 provider 有歧义时，才需要看[选中提供方](#选中提供方)。
+
+使用 [deepseek-v4-flash](https://api-docs.deepseek.com) 在 DeepSeek Harness（dsh）内开发。
 
 ## 特性
 
-- 免 key 可用。搜索经由 Exa 官方托管的 MCP 服务器（`mcp.exa.ai/mcp`），不携带任何凭据。
+- 免 key 可用。搜索经由 Exa 的公共 MCP 服务器（`mcp.exa.ai/mcp`），不携带任何凭据。
 - 配 key 自动升级。设置 `EXA_API_KEY` 后自动切到 Exa `POST /search` REST API，额度更高，行为不变。
 - 即插即用。注册进 dsh `ctx.web` seam，模型侧的 `web_search` 和 `web_fetch` 工具、提示词区段、结果卡片都无需改动。
-- 可与官方包共存。用 `providerId` 区分，不撞 id，也没有黑箱覆盖。
-- 网络异常时不静默失败。免 key 通道限流或不可用时如实上报，详见[降级与回退](#降级与回退)。
+- 装上就能用。不装官方包时不需要选 provider，默认自动生效。
+- 失败时能退让。匿名通道连续失败后，插件会把自己标记为不可用，让 dsh 有机会换别的 provider，而不是每次搜索都硬失败，详见[搜索失败时会发生什么](#搜索失败时会发生什么)。
 
 ## 安装
 
-三种方式选一种。方式只决定代码从哪来，配置步骤相同。
+三种方式选一种。方式只决定代码从哪来，装完都一样。
 
 **从 npm 安装。** v0.1.4 起自带 `dsh.bundle` manifest，bundle patch 会自动插入 provider 行，无需手动改 patch。
 
@@ -57,32 +61,37 @@ dsh plugin --profile web add github:TonyDua/dsh-web-search-exa
 
 本地开发目录的装法相同，把包名换成路径即可：`dsh plugin --profile web add ../plugins/dsh-web-search-exa`。
 
+装完重启 `dsh web`。多数情况下这就是全部步骤。
+
 ### 选中提供方
 
-没有 API key 时不用做任何事，seam 会自动选中本插件。
+**不装官方包时不用看这一节。**
 
-配了 key 时，两个 provider 都可能可用，二选一：
+dsh 的 seam 每次搜索前会挑一个可用 provider。只有一个可用时自动选中，多于一个时抛 `WEB_PROVIDER_AMBIGUOUS`，要求你指定。所以只有在下面两种情况才需要动手：
 
-- 在 `$DSH_HOME/profiles/web/cordis.patch.yml` 里写死（在 bundle patch 之后应用）：
+- **同时装了官方包**：两个包都注册 provider id `exa`，`dsh web` 启动就会报 `WEB_DUPLICATE_PROVIDER`。必须先给本包改一个 id，见[与官方包共存](#与官方包共存)。
+- **报 `WEB_PROVIDER_AMBIGUOUS`**：说明有另一个可用 provider。指定一个即可。
 
-  ```yaml
-  - id: web
-    name: '@deepseek-ai/dsh-web'
-    config:
-      searchProvider: exa
-  ```
+指定方式二选一：
 
-- 或在运行时用环境变量 `$DSH_WEB_SEARCH_PROVIDER=exa` 选中。
+```yaml
+# $DSH_HOME/profiles/web/cordis.patch.yml
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: exa
+```
 
-改完执行 `dsh web --help` 或重启 `dsh web` 生效。模型侧的 `web_search` 工具随即走本提供方，不需要改工具配置。
+或用环境变量 `$DSH_WEB_SEARCH_PROVIDER=exa`。
 
-### 关于发布产物
+改完重启 `dsh web`。模型侧的 `web_search` 工具会自动走选中的 provider，不用改工具配置。
 
-CI 打包本版本的 tarball，在每一个受支持的 dsh 版本上验证，挂到 GitHub Release，并把这个产物本身发布到 npm。所以 Release 附件和 npm 上的 tarball 是同一个文件，而不是两次恰好一致的构建。
+<details>
+<summary>发布产物与安装告警（一般不用看）</summary>
 
-### profile 安装注意事项
+**发布产物。** CI 打包本版本的 tarball，在每一个受支持的 dsh 版本上验证，挂到 GitHub Release，并把这个产物本身发布到 npm。所以 Release 附件和 npm 上的 tarball 是同一个文件，而不是两次恰好一致的构建。
 
-dsh profile 默认 `autoInstallPeers: false`，而 harness 自身的服务由 dsh 宿主在运行时提供，不经 pnpm 解析。把下面这段加进 profile 的 `pnpm-workspace.yaml`，`dsh plugin add` 就不再报警告：
+**profile 安装告警。** dsh profile 默认 `autoInstallPeers: false`，而 harness 自身的服务由 dsh 宿主在运行时提供，不经 pnpm 解析。如果 `dsh plugin add` 报 peer 警告，把下面这段加进 profile 的 `pnpm-workspace.yaml`：
 
 ```yaml
 peerDependencyRules:
@@ -90,6 +99,8 @@ peerDependencyRules:
     - '@deepseek-ai/cordis'
     - '@deepseek-ai/dsh-*'
 ```
+
+</details>
 
 ## 配置
 
@@ -128,26 +139,36 @@ peerDependencyRules:
 
 ### 限流
 
-匿名使用受 Exa 限流。HTTP 429 会以独立的 `WEB_RATE_LIMITED` 码呈现，而不是笼统的 provider 失败，错误信息里直接点名 `EXA_API_KEY`。配置 key 后自动切到 REST 路径。
+匿名通道是 Exa 提供的公共端点，有限流。触发时搜索会失败，错误码是 `WEB_RATE_LIMITED`，错误信息里写明要配 `EXA_API_KEY`。这个码是本插件定的，方便你和模型区分“被限流”和“网络坏了”。
 
-### 降级与回退
+配置 key 后走 REST 路径，不受这个限制。
 
-免 key 通道是共享的尽力而为端点。本 provider 会如实汇报自身健康状况，不假装永远可用：
+### 搜索失败时会发生什么
 
-- 连续 3 次瞬时失败（5xx、429、网络错误、响应体无法解析）会打开熔断器，冷却 5 分钟。这段时间内 `available()` 返回 `false`。任意一次成功搜索即关闭熔断器。
-- 429 以外的 4xx 不会触发熔断：这类失败会永远重复，把它藏进冷却期只是推迟同一个错误。
-- 配了 key 的 REST 路径不受熔断影响。付费端点的失败应当让你看到。
+**你会看到什么：**
 
-但是否真的自动回退，取决于 harness 侧。seam 只会选中唯一一个可用 provider，并不存在优先级链。同时存在多个可用 provider 时，它会抛 `WEB_PROVIDER_AMBIGUOUS`。因此：
+- 匿名通道被限流：错误码 `WEB_RATE_LIMITED`，提示配置 key。
+- 匿名通道连续失败 3 次：本插件会把自己标记为不可用，冷却 5 分钟。这期间 `available()` 返回 `false`。
+- 冷却期内你写死了 `searchProvider: exa`：搜索报 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。
+- 冷却期内你没写 `searchProvider`：seam 跳过本插件，去找别的 provider。没有别的可用 provider 时，报 `WEB_PROVIDER_UNAVAILABLE`。
+- 配了 key 走 REST 路径：不受上面任何一条影响，失败会照常抛给你。
 
-- 写死 `searchProvider: exa`：选择确定，但没有回退。熔断打开时得到 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。
-- 不写 `searchProvider`：牺牲确定性。Exa 降级后确实不再是候选，但如果另一个 provider 也可用（比如带有效 `DEEPSEEK_API_KEY` 的 `deepseek-official`），seam 会报“多个可用”，而不是替你挑一个。
+**为什么会这样。** seam 每次搜索前会调用 `available()` 决定用哪个 provider。如果本插件永远回答“可用”，端点挂掉时每次搜索都会硬失败，用户看到的是一个坏掉的 dsh。所以本插件加了一个熔断器：连续 3 次瞬时失败就承认自己暂时不可用，让 seam 有机会选别人。这是本插件的设计，Exa 没有这个机制。
 
-两种失败模式各有利弊，插件无法替你做这个决定。
+**计数规则。** 只统计重试可能成功的失败：5xx、429、网络错误、响应体无法解析。满 3 次后冷却 5 分钟，任意一次成功搜索立即清零。
+
+429 以外的 4xx 不计入。那是配置错误，重试多少次都一样，藏进冷却期只会把同一个错误推迟 5 分钟再报给你。
+
+**这是有代价的取舍。** Exa 挂掉的 5 分钟里，写死了 `searchProvider: exa` 的 profile 会直接报错，而不是继续尝试。插件无法替你选：
+
+- 写死 `searchProvider: exa`：平时行为确定，但熔断打开时没有退路。
+- 不写 `searchProvider`：熔断时能退到别的 provider，代价是多个 provider 同时可用时，seam 会报 `WEB_PROVIDER_AMBIGUOUS`，需要你再显式指定一个。
+
+想要回退能力就选后者，并且只装一个备选 provider。
 
 ## 与官方包比较
 
-DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-exa)。本包是它的零配置变体：补上了官方没有的匿名 MCP 兜底，同时保留配置 key 后的相同 REST 行为。
+DeepSeek Harness 有一个官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](https://www.npmjs.com/package/@deepseek-ai/dsh-web-search-exa)，需要单独安装，dsh 默认不带。本包是它的零配置变体：补上了官方没有的匿名 MCP 兜底，同时保留配置 key 后的相同 REST 行为。
 
 | | 官方 `@deepseek-ai/dsh-web-search-exa` | 本包 `@tonydua/dsh-web-search-exa` |
 |---|---|---|
@@ -197,7 +218,7 @@ DeepSeek Harness 自带官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa`](
 
 **搜索报 `WEB_PROVIDER_AMBIGUOUS`。** 同时存在多个可用 provider。按[选中提供方](#选中提供方)显式指定一个。
 
-**搜索报 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。** 你写死的 provider 当前不可用。免 key 通道熔断时会这样，见[降级与回退](#降级与回退)。
+**搜索报 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`。** 你写死的 provider 当前不可用。免 key 通道熔断时会这样，见[搜索失败时会发生什么](#搜索失败时会发生什么)。
 
 **Web UI 里找不到设置入口。** 本版本没有 UI 卡片，用 `cordis.patch.yml` 或环境变量配置，见[在 Web 面板中的呈现](#在-web-面板中的呈现)。
 
