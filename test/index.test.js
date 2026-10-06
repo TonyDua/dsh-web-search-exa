@@ -8,7 +8,10 @@ const baseOptions = {
 	apiKeyEnv: "__DSH_EXA_TEST_KEY__",
 	baseURL: "https://api.exa.ai",
 	apiURL: "https://api.exa.ai/search",
+	// Deliberately the BARE endpoint (no tools query): the provider is expected
+	// to splice it in, so every anonymous test also exercises that path.
 	mcpURL: "https://mcp.exa.ai/mcp",
+	mcpTool: "web_search_advanced_exa",
 	searchType: "auto",
 	numResults: 3,
 	highlightsPerResult: 1,
@@ -126,10 +129,25 @@ test("anonymous MCP search sends no credentials and maps SSE results", async () 
 		});
 	}, () => provider().search({ query: "example" }));
 
-	assert.equal(call.url, "https://mcp.exa.ai/mcp");
+	// baseOptions pins the bare endpoint on purpose: the provider must splice in
+	// the tools query itself, because the advanced tool is not servable without
+	// it. This asserts the splicing, not the default constant.
+	assert.equal(call.url, "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa");
 	assert.equal(call.init.headers.authorization, undefined);
 	assert.equal(call.init.headers["x-exa-source"], "dsh-anything");
-	assert.deepEqual(JSON.parse(call.init.body).params.arguments, { query: "example", numResults: 3 });
+	// A non-JSON body must fall back to Title:-section parsing rather than
+	// returning nothing, so the text path stays covered here.
+	//
+	// `type` must NOT appear: the advanced tool's enum (`auto | fast |
+	// instant`) is not the REST enum (`auto | keyword | neural`), so
+	// forwarding a configured `keyword`/`neural` fails the tool's argument
+	// validation and takes the whole anonymous path down with it.
+	assert.deepEqual(JSON.parse(call.init.body).params.arguments, {
+		query: "example",
+		numResults: 3,
+		enableHighlights: true,
+		highlightsNumSentences: 1,
+	});
 	assert.deepEqual(result.sources, [{
 		url: "https://example.com",
 		title: "Example",
@@ -316,4 +334,186 @@ test("installSettingsSection reports true and adopts the source on the older API
 	);
 	assert.equal(installed[1], "web-search-exa", "namespace must stay stable across versions");
 	assert.equal(current().numResults, 42, "live edits must reach the provider");
+});
+
+// ── Structured anonymous path (web_search_advanced_exa) ─────────────────────
+
+/** The full JSON-RPC payload whose text content is the sanitized structured envelope. */
+function structuredEnvelope(envelope) {
+	return { result: { content: [{ type: "text", text: JSON.stringify(envelope) }] } };
+}
+
+/** An MCP response whose text content is the sanitized structured envelope. */
+function structuredResponse(envelope) {
+	return mcpResponse(structuredEnvelope(envelope));
+}
+
+const STRUCTURED = {
+	requestId: "req-1",
+	resolvedSearchType: "auto",
+	results: [
+		{
+			id: "https://example.com/a",
+			url: "https://example.com/a",
+			title: "Structured A",
+			publishedDate: "2026-08-14",
+			highlights: ["First highlight"],
+			text: "# long page text that must NOT become the snippet",
+		},
+		// No highlight: must be dropped, not given a snippet from `text`.
+		{ url: "https://example.com/no-highlight", title: "Dropped", text: "body only" },
+		// Blank highlight: same rule.
+		{ url: "https://example.com/blank", highlights: ["   "] },
+		{ title: "No url at all", highlights: ["x"] },
+	],
+};
+
+test("structured anonymous results map without text parsing", async () => {
+	let body;
+	const result = await withFetch(async (_url, init) => {
+		body = JSON.parse(init.body);
+		return structuredResponse(STRUCTURED);
+	}, () => provider().search({ query: "example" }));
+
+	assert.equal(body.params.name, "web_search_advanced_exa");
+	assert.deepEqual(result.sources, [{
+		url: "https://example.com/a",
+		title: "Structured A",
+		snippet: "First highlight",
+		publishedAt: "2026-08-14",
+	}], "snippet-less and url-less entries must be dropped, never back-filled from text");
+});
+
+test("mcpTool selects the text-blob path when pinned to web_search_exa", async () => {
+	let call;
+	const result = await withFetch(async (url, init) => {
+		call = { url: String(url), body: JSON.parse(init.body) };
+		return mcpResponse({
+			result: { content: [{ type: "text", text: "Title: T\nURL: https://example.com/t\nHighlights:\nH" }] },
+		});
+	}, () => provider({ mcpTool: "web_search_exa" }).search({ query: "example" }));
+
+	assert.equal(call.body.params.name, "web_search_exa");
+	assert.equal(call.url, "https://mcp.exa.ai/mcp", "the text tool needs no tools query");
+	// No highlight-request arguments on the text path.
+	assert.deepEqual(call.body.params.arguments, { query: "example", numResults: 3 });
+	assert.equal(result.sources[0].snippet, "H");
+});
+
+test("an MCP URL that already carries tools is left byte-for-byte alone", async () => {
+	const withTools = "https://mcp.exa.ai/mcp?tools=web_search_exa&other=1";
+	let url;
+	await withFetch(async (requestUrl) => {
+		url = String(requestUrl);
+		return structuredResponse({ results: [] });
+	}, () => provider({ mcpURL: withTools }).search({ query: "example" }));
+	assert.equal(url, withTools);
+});
+
+test("a tools query with an existing but empty value is completed", async () => {
+	let url;
+	await withFetch(async (requestUrl) => {
+		url = String(requestUrl);
+		return structuredResponse({ results: [] });
+	}, () => provider({ mcpURL: "https://mcp.exa.ai/mcp?x=1&tools=" }).search({ query: "example" }));
+	assert.equal(url, "https://mcp.exa.ai/mcp?x=1&tools=&tools=web_search_exa,web_search_advanced_exa");
+});
+
+/**
+ * An SSE MCP response with an explicit `content-length` header.
+ *
+ * `new Response(string)` sets no such header, so the size-cap tests have to
+ * declare it themselves: without one the provider cannot pre-flight the size
+ * and must fall back to counting bytes while streaming. Both paths therefore
+ * need their own case, and this helper builds the first.
+ */
+function mcpResponseWithLength(payload) {
+	const body = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+	return new Response(body, {
+		status: 200,
+		headers: {
+			"content-type": "text/event-stream",
+			"content-length": String(new TextEncoder().encode(body).byteLength),
+		},
+	});
+}
+
+test("a declared over-limit content-length is rejected without reading the body", async () => {
+	const huge = "x".repeat(256 * 1024 + 1);
+	await assert.rejects(
+		withFetch(async () => mcpResponseWithLength({ result: { content: [{ type: "text", text: huge }] } }),
+			() => provider().search({ query: "example" })),
+		error => /exceeded 262144 bytes/.test(error.message),
+	);
+});
+
+test("a response within its declared content-length still reads normally", async () => {
+	// The other half of the pre-flight branch: a present, in-limit header must
+	// not itself become a rejection. The envelope is the full JSON-RPC payload
+	// (`result.content[].text`), not just the inner search response.
+	const result = await withFetch(async () =>
+		mcpResponseWithLength(structuredEnvelope({ results: [{ url: "https://example.com/a", highlights: ["H"] }] })),
+		() => provider().search({ query: "example" }));
+	assert.deepEqual(result.sources, [{ url: "https://example.com/a", snippet: "H" }]);
+});
+
+test("a body that outgrows the cap mid-stream is aborted, not buffered", async () => {
+	// A chunk stream that never ends on its own: it only stops when the provider
+	// cancels it, which is exactly the behavior under test. A guard that ran
+	// after `response.text()` would hang here instead of throwing.
+	let cancelled = false;
+	const stream = new ReadableStream({
+		pull(controller) {
+			if (cancelled) return;
+			controller.enqueue(new Uint8Array(64 * 1024));
+		},
+		cancel() {
+			cancelled = true;
+		},
+	});
+	await assert.rejects(
+		withFetch(async () => new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }),
+			() => provider().search({ query: "example" })),
+		error => /exceeded 262144 bytes/.test(error.message),
+	);
+	assert.equal(cancelled, true, "the transfer must be aborted once the cap is passed");
+});
+
+test("the anonymous path never forwards the REST searchType to the advanced tool", async () => {
+	// The regression that motivates this test: `searchType` is the REST enum
+	// (`auto | keyword | neural`) while the advanced tool accepts only
+	// `auto | fast | instant`, so forwarding `neural` made the tool answer
+	// `MCP error -32602: Input validation error` and the whole search failed.
+	// `keyword` is covered because it is equally invalid on the tool's side.
+	for (const searchType of ["neural", "keyword", "auto"]) {
+		let body;
+		await withFetch(async (_url, init) => {
+			body = JSON.parse(init.body);
+			return structuredResponse({ results: [] });
+		}, () => provider({ searchType }).search({ query: "example" }));
+		assert.equal(body.params.arguments.type, undefined,
+			`searchType "${searchType}" must not reach the advanced tool`);
+		assert.deepEqual(body.params.arguments, {
+			query: "example",
+			numResults: 3,
+			enableHighlights: true,
+			highlightsNumSentences: 1,
+		});
+	}
+});
+
+test("a non-structured body falls back to section parsing instead of failing", async () => {
+	// Simulates Exa changing the advanced tool's output shape: the request must
+	// still yield sources via the text path rather than returning nothing.
+	const result = await withFetch(async () => mcpResponse({
+		result: { content: [{ type: "text", text: "Title: Fallback\nURL: https://example.com/f\nHighlights:\nFallback snippet" }] },
+	}), () => provider().search({ query: "example" }));
+	assert.equal(result.sources.length, 1);
+	assert.equal(result.sources[0].url, "https://example.com/f");
+});
+
+test("an advanced response without a results key is an empty search, not a failure", async () => {
+	const result = await withFetch(async () => structuredResponse({ requestId: "r", searchTime: 1 }),
+		() => provider().search({ query: "example" }));
+	assert.deepEqual(result.sources, []);
 });

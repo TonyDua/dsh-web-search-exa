@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-06
+
+### Added
+
+- **Structured anonymous search via `web_search_advanced_exa`** (new default).
+  Its text content is a sanitized JSON search response in the REST envelope
+  shape, so results map onto the seam vocabulary without `Title:`-section
+  parsing. The tool and the endpoint requirement below come from
+  [@kahlos's PR #1](https://github.com/TonyDua/dsh-web-search-exa/pull/1), which
+  identified both by measurement; the change had to be re-implemented in `src/`
+  rather than merged, because the PR edits `lib/index.js`, which is generated.
+- **`mcpTool` config** (`web_search_advanced_exa` | `web_search_exa`): the
+  structured tool is the default; pinning `web_search_exa` restores the
+  text-blob path.
+- **Endpoint `tools` query**: `mcpURL` now defaults to
+  `…/mcp?tools=web_search_exa,web_search_advanced_exa`, because the advanced
+  tool is not servable without it — the bare endpoint answers
+  `MCP error -32602: Tool web_search_advanced_exa not found`. A configured URL
+  without `tools` gets the query spliced in, so existing configurations keep
+  working.
+- **Response size cap**: anonymous responses over 256 KiB are rejected instead
+  of parsed.
+
+### Changed
+
+- Anonymous advanced calls request highlight sentences
+  (`enableHighlights` / `highlightsNumSentences`). Without them the live
+  endpoint returns text-only entries, every source would lack a portable
+  snippet, and the result would be empty.
+- Non-structured advanced output falls back to section parsing rather than
+  returning nothing, so a future change to the tool's shape degrades instead of
+  breaking. `Title:`-section parsing is retained and still covered by tests.
+
+### Fixed
+
+- **`searchType` no longer breaks the anonymous path.** The advanced tool
+  rejects the REST vocabulary — it accepts `auto` | `fast` | `instant` and
+  answers `MCP error -32602: Input validation error` for anything else — so
+  forwarding a configured `searchType: keyword` or `searchType: neural` made
+  every keyless search fail outright. The argument is not sent at all now,
+  which is equivalent: calling with `type: 'auto'` returns a byte-identical
+  response. `searchType` was and remains a REST-path setting.
+- **The response size cap is enforced while reading, not after.** It was
+  applied to the result of `await response.text()`, which had already buffered
+  the whole body, and `new TextEncoder().encode(text)` then allocated a second
+  full copy of it just to measure the first — so the check cost more memory
+  than the response it was meant to bound. The declared `content-length` is now
+  rejected before the body is read, and a body that keeps growing is aborted
+  mid-transfer. Over-limit bodies are reported through the new
+  `ExaResponseTooLargeError`, which extends `ExaTransientError`: the endpoint
+  produced it, so the breaker counts it.
+
+### Tests
+
+- 17 → 27 (`node --test`). New coverage for tool selection, `tools` splicing
+  (including an existing empty value), structured mapping, snippet-less and
+  url-less entries, both size-cap paths (declared `content-length` and a
+  mid-stream abort), and the section-parsing fallback. One regression test
+  pins that `searchType` never reaches the advanced tool for `auto`, `keyword`,
+  and `neural` — the previous suite passed only because its fixture used
+  `auto`, which happened to be the one value both vocabularies accept.
+
 ## [0.1.5] - 2026-09-22
 
 ### Fixed

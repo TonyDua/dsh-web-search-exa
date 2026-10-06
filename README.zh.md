@@ -32,6 +32,7 @@ dsh plugin --profile web add @tonydua/dsh-web-search-exa
 ## 特性
 
 - 免 key 可用。搜索经由 Exa 的公共 MCP 服务器（`mcp.exa.ai/mcp`），不携带任何凭据。
+- 这条免 key 通道返回结构化结果。它调用 `web_search_advanced_exa`，输出是采用 REST 字段词表的 JSON，因此 source 直接带上真实的 highlight 摘要，无需文本解析。
 - 配 key 自动升级。设置 `EXA_API_KEY` 后自动切到 Exa `POST /search` REST API，额度更高，行为不变。
 - 即插即用。注册进 dsh `ctx.web` seam，模型侧的 `web_search` 和 `web_fetch` 工具、提示词区段、结果卡片都无需改动。
 - 装上就能用。不装官方包时不需要选 provider，默认自动生效。
@@ -110,8 +111,9 @@ peerDependencyRules:
 | `apiKeyEnv` | `EXA_API_KEY` | 未设置字面 `apiKey` 时读取的环境变量名。 |
 | `baseURL` | `https://api.exa.ai` | Exa API 基础 URL。带 key 的 REST 路径会追加 `/search`，与官方 dsh 提供方一致。 |
 | `apiURL` | 未设置 | 已弃用的完整 REST 端点别名，设置后优先于 `baseURL`。 |
-| `mcpURL` | `https://mcp.exa.ai/mcp` | Exa 托管 MCP 端点，匿名路径使用。 |
-| `searchType` | `auto` | REST 检索模式：`auto`、`keyword` 或 `neural`。 |
+| `mcpURL` | `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa` | Exa 托管 MCP 端点，匿名路径使用。默认值里的 `tools` 查询参数是必需的：结构化工具没有它就无法被调用。你自己的 URL 里不写这个参数，插件会补上。 |
+| `mcpTool` | `web_search_advanced_exa` | 匿名路径调用哪个 MCP 工具：默认是返回结构化 JSON 的那个；填 `web_search_exa` 则回到旧的 `Title:` 分节文本。见[工作原理](#工作原理)。 |
+| `searchType` | `auto` | REST 检索模式：`auto`、`keyword` 或 `neural`。只在 REST 路径上读取。 |
 | `numResults` | 未设置 | 请求未携带 `maxResults` 时的默认结果数。 |
 | `highlightsPerResult` | `1` | REST 路径每个结果请求的 highlight 句子数。 |
 | `providerId` | `exa` | 注册进 `ctx.web` 的提供方 id。仅当本包与官方包同时安装时才需要改，见[与官方包共存](#与官方包共存)。 |
@@ -133,9 +135,20 @@ peerDependencyRules:
 | 条件 | 路径 | 端点 |
 |---|---|---|
 | 配置了 `apiKey` / `EXA_API_KEY` | REST `POST /search`，`Authorization: Bearer` | `https://api.exa.ai/search`（可用 `baseURL` 配置） |
-| 未配置任何 key | 匿名 MCP `tools/call web_search_exa`（JSON-RPC 2.0，无凭据） | `https://mcp.exa.ai/mcp`（可配置） |
+| 未配置任何 key | 匿名 MCP `tools/call web_search_advanced_exa`（JSON-RPC 2.0，无凭据） | `https://mcp.exa.ai/mcp?tools=…`（可配置） |
 
 匿名 MCP 路径不发送任何凭据，来源标识通过 `x-exa-source: dsh-anything` 头携带。结果按 seam 的 `WebSearchSource` 形状规范化（`url`、`title`、`snippet`、`publishedAt`），`maxResults` 由 seam 在返回路径上强制执行。
+
+匿名路径默认调用 `web_search_advanced_exa`。它的文本内容是一份结构化的 JSON 搜索结果，条目的字段名与 REST API 一致，因此可以直接映射成 source，全程不涉及 `Title:` 分节文本解析。有两点需要知道：
+
+- **只有 URL 带上 `?tools=…` 时，这个结构化工具才会被服务。** 裸端点会返回 `MCP error -32602: Tool web_search_advanced_exa not found`，这就是该查询参数写进 `mcpURL` 默认值的原因，也是插件会把它补进任何缺少该参数的 `mcpURL` 的原因。
+- **它每条结果都返回整页正文，而 highlights 需要我们单独索取。** 不传 `enableHighlights` 时端点只返回纯文本条目，每条结果都拿不到摘要，搜索会整体返回空。正文随后被丢弃：摘要永远是真实的 highlight 句子，既不生成、也不从正文里截取。
+
+这里**不会**转发 `searchType`。本插件的这个配置用的是 REST 词表（`auto`、`keyword`、`neural`），而该工具只接受自己的词表（`auto`、`fast`、`instant`）；转发会让配置了 `keyword` 或 `neural` 的用户触发参数校验失败，把整条匿名路径一起打死。工具的默认行为本就等同于 `auto`。
+
+把 `mcpTool` 固定为 `web_search_exa` 可以回到旧的文本块路径，同样结果以 `Title:` 开头的分节形式返回。若 Exa 改动了结构化工具的输出形状，可以这样切换；而返回体若不是预期的 JSON，插件本身就会自动回退到分节解析。
+
+由于结构化工具每条结果都带整页正文，响应体可能很大。匿名响应上限为 256 KiB：会先检查声明的 `content-length` 再读取正文，正文若持续增长则在传输中途中断。超限响应按可重试错误失败，而不是被截断或静默解析。
 
 ### 限流
 
@@ -178,7 +191,7 @@ DeepSeek Harness 有一个官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa
 | 零配置安装 | ❌ | ✅ |
 | Provider id | `exa`（固定） | 默认 `exa`，可用 `providerId` 配置 |
 | Cordis 插件名 | `web-search-exa` | `web-search-exa` |
-| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`baseURL`、`apiURL`（旧版）、`mcpURL`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
+| 配置键 | `apiKey`、`baseURL`、`searchType`、`numResults`、`highlightsPerResult` | `apiKey`、`apiKeyEnv`、`baseURL`、`apiURL`（旧版）、`mcpURL`、`mcpTool`、`searchType`、`numResults`、`highlightsPerResult`、`providerId` |
 
 该用哪个：
 
@@ -288,6 +301,8 @@ pnpm test           # 先构建，再对 lib/ 跑 node:test 套件
 匿名 MCP 接入方式参考了 [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `web_search` 实现（`packages/coding-agent/src/web/search/providers/exa.ts` 和 `src/exa/mcp-client.ts`）以及 [`@oh-my-pi/exa`](https://www.npmjs.com/package/@oh-my-pi/exa) 插件：同样的“有 key 走 REST、无 key 走免凭据 `mcp.exa.ai/mcp`”策略、同样的 `x-exa-source` 来源头、同样的 `Title:` 分节响应解析。感谢 oh-my-pi（omp）项目最先做出零配置的 Exa 接入。
 
 同时感谢 **[Exa](https://exa.ai)** 提供并运营这个免费、免认证的托管 MCP 服务器（`mcp.exa.ai/mcp`），正是它让本包的零配置默认路径成为可能。Exa 托管 MCP 是 Exa 的官方产品，匿名使用有限流，见[限流](#限流)。
+
+感谢 **[@kahlos](https://github.com/kahlos)**（[PR #1](https://github.com/TonyDua/dsh-web-search-exa/pull/1)）：他发现 `web_search_advanced_exa` 返回的是结构化结果，并且端点在没有 `?tools=` 查询参数时根本不会服务这个工具。这两点都没有文档记载，只能靠实测得出。匿名路径现在默认走这个工具，旧的 `Title:` 分节路径保留为回退。
 
 ## 更新日志
 

@@ -57,6 +57,27 @@ export interface McpPayload {
 }
 
 /**
+ * One `results[]` entry of the sanitized JSON that `web_search_advanced_exa`
+ * returns as its text content. Same field vocabulary as the REST response, so
+ * it maps through the same snippet rule.
+ */
+export interface ExaAdvancedResult {
+	readonly url?: unknown;
+	readonly title?: unknown;
+	/** Highlight sentences; the only portable snippet source. */
+	readonly highlights?: unknown;
+	/** Publication/crawl timestamp, passed through as `publishedAt`. */
+	readonly publishedDate?: unknown;
+	/** Long-form page text. Deliberately unused: a snippet must be a real highlight. */
+	readonly text?: unknown;
+}
+
+/** The parsed text content of an advanced-tool MCP result. */
+export interface ExaAdvancedResponse {
+	readonly results?: unknown;
+}
+
+/**
  * One parsed `Title:`-led section of Exa MCP text output. Every field is
  * best-effort: Exa omits or emits `N/A` for several of them.
  */
