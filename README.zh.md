@@ -259,7 +259,7 @@ DeepSeek Harness 有一个官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa
 
 其一，`0.1.7-alpha.1` 换掉了 settings API。`SettingsProvider.installSection` 被移除，服务变成 `SettingsForms`，它直接从 Loader 已持有的 Config schema 派生配置页（`SettingsDescriptor.schema`、`autoGenerate`）。旧代码无条件调用该方法，会在这个版本上抛 `TypeError`：插件能加载，但会失败。现在改为先探测方法，存在才调用，不存在则什么都不做。在 `0.1.7+` 上由 Loader 的 schema 驱动表单，插件无需注册任何东西。
 
-其二，`@deepseek-ai/cordis` 跟着 dsh 走，而且是一路穿过 prerelease 走的：`0.1.5`/`0.1.6` 精确 peer `4.0.2`，`0.1.7` 是 `^4.0.3`，`0.2.0` 是 `~4.0.4`，`0.2.1-alpha.1` 是 `~4.0.5-alpha.1`。宿主要求哪个就装哪个。矩阵脚本改成从每个 dsh 版本自己发布的 manifest 里读这个范围，而不是维护一张表——表会悄悄过期：本插件的 peer 范围也正是因此才补上 `>=4.0.5-alpha.1` 这个比较器，没有它 `0.2.1-alpha.1` 根本装不上。
+其二，`@deepseek-ai/cordis` 跟着 dsh 走，而且是一路穿过 prerelease 走的：`0.1.5`/`0.1.6` 是 `^4.0.2`（`0.1.5-rc.3` 为精确 `4.0.2`），`0.1.7` 是 `^4.0.3`，`0.2.0` 是 `~4.0.4`，`0.2.1-alpha.1` 是 `~4.0.5-alpha.1`。宿主要求哪个就装哪个，但钉法要当心：`^4.0.2` 会解析到 `4.0.4`，而 `0.1.5` 那几个版本并非针对它发布的，本插件随后就无法严格安装在它们旁边。矩阵脚本读取该范围后，把它的**下界**作为具体版本钉住。本插件自己的 peer 范围也需要补上 `>=4.0.5-alpha.1` 比较器，否则 `0.2.1-alpha.1` 根本装不上。
 
 同样支持 `@deepseek-ai/dsh-web`、`dsh-settings`（可选）和 `dsh-launch-environment`，覆盖上述整个范围。Node.js 需要 `>=22.19.0`，与 harness 自身的下限一致。
 

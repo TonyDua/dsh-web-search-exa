@@ -23,13 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   excludes `4.0.5-alpha.1`, which is what a `0.2.1-alpha.1` host peers, so that
   version failed strict installation even after the dsh ranges were fixed. The
   range is now `>=4.0.2 || >=4.0.5-alpha.1`.
-- **`scripts/compat-matrix.sh` pinned the wrong cordis for `0.2.*`.** It
-  hard-coded `4.0.3` for that whole line, which is wrong for `0.2.0-rc.2`
-  (`~4.0.4`) and wrong again for `0.2.1-alpha.1` (`~4.0.5-alpha.1`). The
-  resulting npm conflict came from the harness's own graph but surfaced as an
-  install failure next to this plugin, reading like our bug. Cordis is now read
-  from the dsh version's own published manifest, and the version list carries
-  the `0.2.x` line.
+- **`scripts/compat-matrix.sh` pinned cordis wrongly, in a way that hid the
+  real problem.** It hard-coded `4.0.3` for the whole `0.2.*` line, which is
+  wrong for `0.2.0-rc.2` (`~4.0.4`) and wrong again for `0.2.1-alpha.1`
+  (`~4.0.5-alpha.1`); the resulting npm conflict came from the harness's own
+  graph but surfaced as an install failure next to this plugin, reading like our
+  bug. The range is now read from each version's published manifest and its
+  floor pinned as a concrete version. Pinning the range itself — the obvious
+  first fix — is broken, which is how that mistake was caught: on the `0.1.5`
+  line `^4.0.2` resolves to `4.0.4`, the plugin then fails to install strictly,
+  and four versions went red. Passing cordis through nowhere at all fails the
+  other way, because `tsc` needs it resolvable at the top level while the
+  harness's own tree nests it. The `0.2.x` line is in the version list now, so
+  the gap that caused this cannot silently reopen.
 
 ### Added
 

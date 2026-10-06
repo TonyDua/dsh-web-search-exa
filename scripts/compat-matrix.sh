@@ -40,11 +40,34 @@ TSC="$REPO_ROOT/node_modules/typescript/bin/tsc"
 # unconstructable `any` — typecheck then fails in a way that looks like a bug
 # in this plugin. npm does not auto-install it (peer auto-install is off in
 # these throwaway roots), so a clean machine needs it listed.
-cordis_for() {
+# cordis is pinned by install_version() at the FLOOR of what each dsh version
+# asks for — `^4.0.2` becomes `4.0.2`, not `4.0.2`-as-a-range — and deliberately
+# not at all by npm_installs(). Both choices were forced by measurement:
+#
+#   - install_version() must have cordis at the TOP LEVEL of node_modules,
+#     because `tsc` resolves `import type { Context } from '@deepseek-ai/cordis'`
+#     from src/. Left to the harness's own tree it lands nested and every
+#     version fails with TS2307. Installing it explicitly also happens to be
+#     what the older releases were published against.
+#   - npm_installs() must NOT pin it. There the question is only whether the
+#     plugin's peer range admits the host's cordis, and pinning the range
+#     (`^4.0.2`) resolves to 4.0.4, which 0.1.5-alpha.1/alpha.2/rc.1/rc.2 were
+#     not published against — the plugin then fails to install strictly and the
+#     failure looks like ours. Omitting it lets the harness pick, which is the
+#     resolution a real user gets; that is also the fallback for the host phase.
+#
+# So: read the range, take its floor as a concrete pin, and pass a range through
+# nowhere. Passing the range itself is the bug this replaces.
+#
+# Beware the historical note this replaces: 0.1.5-rc.2 peers dsh-llm at
+# ^0.1.5-rc.2, which was never published.
+cordis_floor() {
   local v="$1" range
   range="$(npm view "@deepseek-ai/dsh-web@$v" peerDependencies --json 2>/dev/null \
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s)["@deepseek-ai/cordis"]??"")}catch{process.stdout.write("")}})')"
-  if [ -n "$range" ]; then echo "$range"; else echo 4.0.4; fi
+  [ -z "$range" ] && return 0
+  # ^4.0.2 / ~4.0.4 / >=4.0.5-alpha.1 / 4.0.2 -> the concrete version at the floor.
+  printf '%s' "$range" | sed -E 's/^[[:space:]]*(\^|~|>=|=|>)?[[:space:]]*//' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?'
 }
 
 VERSIONS=(
@@ -71,7 +94,7 @@ install_version() {
   ( cd "$dir" && npm install --silent --no-audit --no-fund --legacy-peer-deps \
       "@deepseek-ai/dsh-web@$v" "@deepseek-ai/dsh-settings@$v" \
       "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" \
-      "@deepseek-ai/cordis@$(cordis_for "$v")" "@types/node@^22.19.0" ) \
+      "@deepseek-ai/cordis@$(cordis_floor "$v")" "@types/node@^22.19.0" ) \
     > "$WORK_ROOT/install-$v.log" 2>&1
 }
 
@@ -124,29 +147,29 @@ npm_installs() {
   tarball="$(ls "$pack"/*.tgz 2>/dev/null | head -1)"
   if [ -z "$tarball" ]; then printf '%-16s npm pack failed\n' "$v"; return 1; fi
   work="$(mktemp -d)"
-  local cordis; cordis="$(cordis_for "$v")"
-  node -e '
-    const fs = require("node:fs");
-    const [tarball, version, cordis, dir] = process.argv.slice(1);
-    fs.writeFileSync(`${dir}/package.json`, JSON.stringify({
-      name: "compat-npm", private: true, type: "module",
-      dependencies: {
-        "@tonydua/dsh-web-search-exa": `file:${tarball}`,
-        "@deepseek-ai/dsh-web": version,
-        "@deepseek-ai/dsh-settings": version,
-        "@deepseek-ai/dsh-launch-environment": version,
-        "@deepseek-ai/dsh-llm": version,
-        "@deepseek-ai/cordis": cordis,
-      },
-    }, null, 2));
-  ' "$tarball" "$v" "$cordis" "$work"
-  local host_ok plugin_ok
+
+  # Phase 1: the host, letting the harness resolve its own cordis. Pinning it to
+  # the peer range fails on the 0.1.5 line (see the note at cordis_floor), so it
+  # is only added when the harness's own resolution cannot produce a tree.
+  local host_ok
   ( cd "$work" && npm install --no-audit --no-fund --legacy-peer-deps \
       "@deepseek-ai/dsh-web@$v" "@deepseek-ai/dsh-settings@$v" \
-      "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" \
-      "@deepseek-ai/cordis@$cordis" >/dev/null 2>&1 ) && host_ok=1 || host_ok=0
-  # The plugin is installed on its own, strictly, so an unsatisfiable peer
-  # range of ours is what fails here — not the host's own graph.
+      "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" >/dev/null 2>&1 ) \
+    && host_ok=1 || host_ok=0
+  if [ "$host_ok" != 1 ]; then
+    local floor; floor="$(cordis_floor "$v")"
+    if [ -n "$floor" ]; then
+      ( cd "$work" && npm install --no-audit --no-fund --legacy-peer-deps \
+          "@deepseek-ai/dsh-web@$v" "@deepseek-ai/dsh-settings@$v" \
+          "@deepseek-ai/dsh-launch-environment@$v" "@deepseek-ai/dsh-llm@$v" \
+          "@deepseek-ai/cordis@$floor" >/dev/null 2>&1 ) && host_ok=1 || host_ok=0
+    fi
+  fi
+
+  # Phase 2: the plugin, installed STRICTLY (no --legacy-peer-deps), so npm
+  # actually enforces the peer ranges we ship. Installing it loosely would make
+  # this check vacuous — and the peer range is the thing that broke here.
+  local plugin_ok
   ( cd "$work" && npm install --no-audit --no-fund "$tarball" >/dev/null 2>&1 ) \
     && plugin_ok=1 || plugin_ok=0
   if [ "$host_ok" = 1 ] && [ "$plugin_ok" = 1 ]; then
