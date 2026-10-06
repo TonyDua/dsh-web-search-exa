@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-06
+
+### Fixed
+
+- **The plugin could not be installed beside any dsh 0.2.x release.** The peer
+  ranges ended at `>=0.1.8`, and because a prerelease only satisfies a range
+  that carries a prerelease comparator on the same `major.minor.patch` triple,
+  that enumeration excluded the entire `0.2.x` line. `npm install` of the
+  published tarball beside `0.2.0-rc.2` failed with `ERESOLVE` — which is what
+  took this package off the DSH STORE listing
+  ([AI-Scarlett/DSH-Store#1016](https://github.com/AI-Scarlett/DSH-Store/issues/1016)),
+  since the catalog requires an installable result for at least one of the
+  official latest three releases. The ranges now end with
+  `|| >=0.2.0-rc.1 || >=0.2.1-alpha.1`.
+- **`@deepseek-ai/cordis` had the same defect one line down.** `>=4.0.2`
+  excludes `4.0.5-alpha.1`, which is what a `0.2.1-alpha.1` host peers, so that
+  version failed strict installation even after the dsh ranges were fixed. The
+  range is now `>=4.0.2 || >=4.0.5-alpha.1`.
+- **`scripts/compat-matrix.sh` pinned the wrong cordis for `0.2.*`.** It
+  hard-coded `4.0.3` for that whole line, which is wrong for `0.2.0-rc.2`
+  (`~4.0.4`) and wrong again for `0.2.1-alpha.1` (`~4.0.5-alpha.1`). The
+  resulting npm conflict came from the harness's own graph but surfaced as an
+  install failure next to this plugin, reading like our bug. Cordis is now read
+  from the dsh version's own published manifest, and the version list carries
+  the `0.2.x` line.
+
+### Added
+
+- **`dsh.compatibility.dshReleases`** in `package.json`, declaring
+  `0.2.0-rc.1`, `0.2.0-rc.2`, and `0.2.1-alpha.1` as `compatible`. A catalog
+  requires a precise per-version record; a peer range is not installable
+  evidence. Each declared version was verified by installing the real tarball
+  with npm under strict peer resolution beside that host and then running a live
+  keyless search through the registered provider.
+
+### Notes
+
+- The `||` in these ranges picks the highest lower bound rather than widening
+  the range, because every comparator is open-ended `>=`. Appending
+  `|| >=0.2.0-rc.1` to a range ending in `>=0.1.8` silently drops `0.1.8`
+  through `0.2.0-rc.1`. Both READMEs now say so, with the measured numbers: the
+  shipped enumeration resolves on all 20 published releases from
+  `0.1.2-alpha.2` to `0.2.1-alpha.1`.
+- No runtime behavior changed in this release.
+
 ## [0.2.0] - 2026-10-06
 
 ### Added

@@ -237,7 +237,7 @@ The simplest alternative is to install only one of the two packages per profile,
 
 ## Version compatibility
 
-Every published dsh version from `0.1.2-alpha.2` to `0.1.7-alpha.1` has been tested. Testing means three things: installing that version in isolation, typechecking against its own declarations, and installing this plugin with npm under strict peer resolution. The last step is the one that fails most easily, because npm's peer rules are stricter than pnpm's. To reproduce: `bash scripts/compat-matrix.sh`.
+Every published dsh version from `0.1.2-alpha.2` to `0.2.1-alpha.1` has been tested. Testing means three things: installing that version in isolation, typechecking against its own declarations, and installing this plugin with npm under strict peer resolution. The last step is the one that fails most easily, because npm's peer rules are stricter than pnpm's. To reproduce: `bash scripts/compat-matrix.sh`.
 
 | dsh line | Tested | Notes |
 |---|---|---|
@@ -248,16 +248,18 @@ Every published dsh version from `0.1.2-alpha.2` to `0.1.7-alpha.1` has been tes
 | `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.5-rc.3` | ✅ | `0.1.5-rc.2` is also verified end to end: a real `dsh --profile headless` task searched through the anonymous MCP path with no API key |
 | `0.1.6-alpha.1`, `0.1.6-alpha.2` | ✅ | |
 | `0.1.7-alpha.1` | ✅ | the settings service changed shape, see below |
+| `0.2.0-rc.1`, `0.2.0-rc.2` | ✅ | strict npm install beside the host, then a live keyless search |
+| `0.2.1-alpha.1` | ✅ | same, and the only version that needs `@deepseek-ai/cordis@4.0.5-alpha.1` |
 
-The `>=0.1.8` entry in the peer range carries later stable releases, but those have not been tested yet.
+Versions from the `0.2.0-rc.1` line onward are also declared one by one under `dsh.compatibility.dshReleases` in `package.json`, which is the precise per-version record a catalog needs; a peer range alone is not installable evidence.
 
 ### What differs across versions
 
-Probing the real export surface of all 14 versions, the `ctx.web` seam turns out to be completely stable: `WebError` is always exported from `dsh-web` and extends `HarnessError`, `launchEnvironmentOf` is always present, and `ctx.settings` is mounted in every version. Only two things differ.
+Probing the real export surface of every version, the `ctx.web` seam turns out to be completely stable: `WebError` is always exported from `dsh-web` and extends `HarnessError`, `launchEnvironmentOf` is always present, and `ctx.settings` is mounted in every version. Only two things differ.
 
 First, `0.1.7-alpha.1` replaced the settings API. `SettingsProvider.installSection` is gone, and the service became `SettingsForms`, which derives a config page from the Config schema the Loader already holds (`SettingsDescriptor.schema`, `autoGenerate`). Code that called that method unconditionally throws a `TypeError` there: the plugin loads but fails. It now probes for the method, calls it only when present, and does nothing otherwise. On `0.1.7+` the Loader's schema drives the form and the plugin has nothing to register.
 
-Second, `0.1.7-alpha.1` depends on `@deepseek-ai/cordis` `^4.0.3`, while cordis's `latest` dist-tag still points at `4.0.2`. `4.0.3` is published; the tag simply lags. Install `@deepseek-ai/cordis@4.0.3` alongside a `0.1.7` host. The matrix script pins this per version.
+Second, the `@deepseek-ai/cordis` line moves with dsh, and it moves through pre-releases: `0.1.5`/`0.1.6` peer it exactly at `4.0.2`, `0.1.7` at `^4.0.3`, `0.2.0` at `~4.0.4`, and `0.2.1-alpha.1` at `~4.0.5-alpha.1`. Install the version the host asks for. The matrix script reads that range from each dsh version's own published manifest rather than keeping a table, because a table drifts: this plugin's own peer range had to grow a `>=4.0.5-alpha.1` comparator for the same reason, and `0.2.1-alpha.1` would not install strictly without it.
 
 Also supported across that whole range: `@deepseek-ai/dsh-web`, `dsh-settings` (optional), and `dsh-launch-environment`. Node.js needs `>=22.19.0`, matching the harness's own floor.
 
@@ -265,23 +267,33 @@ Also supported across that whole range: `@deepseek-ai/dsh-web`, `dsh-settings` (
 <summary>Why the peer range looks like that</summary>
 
 ```jsonc
-"@deepseek-ai/dsh-web": ">=0.1.2-alpha.2 || >=0.1.3-alpha.2 || >=0.1.4-0 || >=0.1.5-alpha.1 || >=0.1.6-alpha.1 || >=0.1.7-alpha.1 || >=0.1.8"
+"@deepseek-ai/dsh-web": ">=0.1.2-alpha.2 || >=0.1.3-alpha.2 || >=0.1.4-0 || >=0.1.5-alpha.1 || >=0.1.6-alpha.1 || >=0.1.7-alpha.1 || >=0.1.8 || >=0.2.0-rc.1 || >=0.2.1-alpha.1"
 ```
 
 That enumeration is the only form that installs across every published version under both pnpm and npm. The reason is one semver rule:
 
 > A prerelease version satisfies a range only if some comparator in that range carries a prerelease on the same `major.minor.patch` triple.
 
-So `>=0.1.2-rc.1` does not match `0.1.5-rc.2`; the triples differ. A single open-ended lower bound cannot cover a project published as a series of prereleases, and `*` would also admit a future breaking `1.0`. Every `0.1.x` line that shipped a prerelease needs its own comparator. `>=0.1.8` carries later stable releases, so an entry only needs adding when dsh opens a new `0.1.x` prerelease line.
+So `>=0.1.2-rc.1` does not match `0.1.5-rc.2`; the triples differ. A single open-ended lower bound cannot cover a project published as a series of prereleases, and `*` would also admit a future breaking `1.0`.
+
+Two things about the shape are easy to get wrong, and both were:
+
+- **`||` here does not widen the range, it picks a lower bound.** Every comparator is an open-ended `>=`, so the whole expression is the union of "at or above X" for each X — which is simply "at or above the highest X". A comparator added for a *lower* release is dead weight: appending `|| >=0.2.0-rc.1` to a range ending in `>=0.1.8` drops `0.1.8` and everything above it up to `0.2.0-rc.1`, because the tuple rule above then has no 0.1.8 comparator to match against. This was caught by testing the range against the real published list rather than by reading it.
+- **A prerelease line needs a comparator on its own tuple.** `0.2.0-rc.2` matches `>=0.2.0-rc.1`, but not `>=0.2.1-alpha.1`. `0.2.1-alpha.1` needs the second entry. The same rule applies to `@deepseek-ai/cordis`, whose own line moved through `4.0.5-alpha.1`: `>=4.0.2` excludes it, so the shipped range is `>=4.0.2 || >=4.0.5-alpha.1`. That one is not cosmetic — without it `npm install` of this plugin beside a `0.2.1-alpha.1` host fails with `ERESOLVE`.
 
 Measured against the real published artifacts:
 
-| Range | Installable npm versions | pnpm |
-|---|---|---|
-| `>=0.1.2-rc.1` (the earlier form) | **1 / 14** | 14 / 14 |
-| The enumeration (current) | **14 / 14** | 14 / 14 |
+| Range | Installs with npm |
+|---|---|
+| `>=0.1.2-rc.1` (the earliest form) | **1** of the 14 releases it was meant to cover |
+| The `0.1.8`-terminated enumeration | **14 / 14** |
+| The current enumeration | **20 / 20** of every published release from `0.1.2-alpha.2` to `0.2.1-alpha.1` |
 
-This was measured, not reasoned. The open-ended range is fine on pnpm, which is what `dsh plugin add` uses. On npm it makes 13 of the 14 versions fail with `ERESOLVE`. If you hit that error installing an older release of this plugin with npm, upgrade, or pass `--legacy-peer-deps` temporarily.
+This was measured, not reasoned. The open-ended range is fine on pnpm, which is what `dsh plugin add` uses. On npm it made 13 of the first 14 versions fail with `ERESOLVE`. If you hit that error installing an older release of this plugin with npm, upgrade, or pass `--legacy-peer-deps` temporarily.
+
+A range that *resolves* is not the same as a version that was *tested*: the matrix covers one release per line plus any release that changed a seam, which is 20 of these on the resolution side but 17 rows in the table above. `0.1.7-alpha.2`, `0.1.7-rc.1`, and `0.1.7-rc.2` resolve and are expected to work, but only `0.1.7-alpha.1` was run.
+
+The plugin's own `dsh.compatibility.dshReleases` map is a separate record and does not affect resolution: it declares, one full version at a time, which dsh releases this build was verified against, for catalogs that require exact per-version evidence instead of a range.
 
 </details>
 

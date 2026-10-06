@@ -19,12 +19,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_ROOT="${DSH_COMPAT_DIR:-${TMPDIR:-/tmp}/dsh-compat}"
 TSC="$REPO_ROOT/node_modules/typescript/bin/tsc"
 
-# cordis is pinned per dsh line rather than taken from `latest`. The 0.1.5 and
-# 0.1.6 packages peer `@deepseek-ai/cordis` at an exact version (4.0.2) while
-# `latest` has moved to 4.0.4, so resolving `latest` makes the harness's own
-# siblings disagree and the plugin then cannot install strictly beside them —
-# a host-side conflict that looks like ours from the outside. 0.1.7 moved to
-# ^4.0.3, where the exact pin is gone.
+# cordis is resolved from the dsh version's OWN published manifest, never from
+# `latest` and never from a hard-coded table. Both alternatives were tried and
+# both are wrong:
+#
+#   - `latest` disagrees with the harness's siblings. The 0.1.5 and 0.1.6
+#     packages peer cordis at an exact version (4.0.2) while `latest` moved on,
+#     and 0.1.7 peers ^4.0.3 while `latest` still pointed at 4.0.2.
+#   - a table drifts silently. This script used to pin 4.0.3 for `0.2.*`, which
+#     was already wrong for 0.2.0-rc.2 (it peers ~4.0.4) and wrong for
+#     0.2.1-alpha.1 (it peers ~4.0.5-alpha.1). The resulting npm conflict came
+#     from the harness's own graph, but it surfaced as an install failure beside
+#     this plugin and read like our bug.
+#
+# dsh-web carries the authoritative range, so read it there.
 #
 # @deepseek-ai/dsh-llm is installed explicitly, not for tests to import: dsh-web
 # re-exports WebError extends HarnessError FROM dsh-llm, so without it
@@ -32,14 +40,11 @@ TSC="$REPO_ROOT/node_modules/typescript/bin/tsc"
 # unconstructable `any` — typecheck then fails in a way that looks like a bug
 # in this plugin. npm does not auto-install it (peer auto-install is off in
 # these throwaway roots), so a clean machine needs it listed.
-#
-# dsh >= 0.1.7 peers cordis ^4.0.3 while the cordis `latest` dist-tag still
-# points at 4.0.2, so pin per version rather than trusting `latest`.
 cordis_for() {
-  case "$1" in
-    0.1.7-*|0.1.8-*|0.2.*) echo 4.0.3 ;;
-    *) echo 4.0.2 ;;
-  esac
+  local v="$1" range
+  range="$(npm view "@deepseek-ai/dsh-web@$v" peerDependencies --json 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s)["@deepseek-ai/cordis"]??"")}catch{process.stdout.write("")}})')"
+  if [ -n "$range" ]; then echo "$range"; else echo 4.0.4; fi
 }
 
 VERSIONS=(
@@ -49,6 +54,7 @@ VERSIONS=(
   0.1.5-alpha.1 0.1.5-alpha.2 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3
   0.1.6-alpha.1 0.1.6-alpha.2
   0.1.7-alpha.1
+  0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1
 )
 
 install_version() {
