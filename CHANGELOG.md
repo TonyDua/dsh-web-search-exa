@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-10-06
+
+### Fixed
+
+- **The README was still advertising the old support range.** The `dsh` badge
+  hard-coded `0.1.2-alpha.2 – 0.1.7-alpha.1` and was not touched by the 0.2.x
+  work, so the first thing a reader sees contradicted the package it describes.
+  It now reads `0.1.2-alpha.2 – 0.2.1-alpha.1` and links to the compatibility
+  section rather than to the harness repository.
+- **The install section dated a claim it had outgrown.** It said "v0.1.4 and
+  later ship the `dsh.bundle` manifest", which invites a reader on an older
+  release to wonder whether the documented command still applies to them. The
+  manifest ships in every published version; the sentence no longer carries a
+  version.
+
+### Changed
+
+- **`dsh.compatibility.dshReleases` is now explained where the reader meets it**,
+  instead of only in a collapsed section. The text states what the key is and
+  what it is not: catalog metadata that the dsh runtime never reads and that
+  does not affect dependency resolution, present because registries such as DSH
+  STORE require an exact per-version record. That distinction was worth making
+  explicitly after a peer range that *looked* like a compatibility claim turned
+  out to exclude the entire 0.2.x line.
+- The note separating a version that *resolves* from one that was *tested* was
+  ambiguous about which number it was comparing; it now names the three
+  releases (`0.1.7-alpha.2`, `0.1.7-rc.1`, `0.1.7-rc.2`) that account for the
+  difference between 20 resolved and 17 tested.
+
+### Notes
+
+- Documentation only. No runtime behavior, manifest field, or peer range
+  changed in this release; it exists because the READMEs are part of the
+  published tarball, so a documentation fix only reaches `dsh plugin add` and
+  npm users through a release.
+
 ## [0.2.1] - 2026-10-06
 
 ### Fixed

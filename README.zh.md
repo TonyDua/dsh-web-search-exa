@@ -6,7 +6,7 @@
 [![GitHub release](https://img.shields.io/github/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
 [![npm 下载量](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
 [![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
-[![dsh](https://img.shields.io/badge/dsh-0.1.2--alpha.2%20%E2%80%93%200.1.7--alpha.1-4c6?logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh](https://img.shields.io/badge/dsh%20tested-0.1.2--alpha.2%20%E2%80%93%200.2.1--alpha.1-4c6?logo=deepseek&logoColor=white)](#版本兼容性)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-339933?logo=node.js&logoColor=white)](package.json)
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
@@ -42,7 +42,7 @@ dsh plugin --profile web add @tonydua/dsh-web-search-exa
 
 三种方式选一种。方式只决定代码从哪来，装完都一样。
 
-**从 npm 安装。** v0.1.4 起自带 `dsh.bundle` manifest，bundle patch 会自动插入 provider 行，无需手动改 patch。
+**从 npm 安装。** `dsh.bundle` manifest 自带 bundle patch，会自动插入 provider 行，无需手动改 patch。
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
@@ -251,7 +251,7 @@ DeepSeek Harness 有一个官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa
 | `0.2.0-rc.1`、`0.2.0-rc.2` | ✅ | 在宿主旁做 npm 严格安装，再跑一次真实的免 key 搜索 |
 | `0.2.1-alpha.1` | ✅ | 同上；也是唯一需要 `@deepseek-ai/cordis@4.0.5-alpha.1` 的版本 |
 
-从 `0.2.0-rc.1` 这条线起，各版本还在 `package.json` 的 `dsh.compatibility.dshReleases` 里逐条声明。目录类审核需要的是这种逐版本精确记录，光有 peer 范围不构成可安装证据。
+从 `0.2.0-rc.1` 这条线起，各版本还在 `package.json` 的 `dsh.compatibility.dshReleases` 里逐个完整版本号声明。这个键是**目录元数据**：dsh 运行期从不读取它，也不影响依赖解析——[DSH STORE](https://dsh.store/) 这类目录要求逐版本精确记录，光有 peer 范围不构成可安装证据。目前声明覆盖 `0.2.0-rc.1`、`0.2.0-rc.2`、`0.2.1-alpha.1`，均为 `compatible`。
 
 ### 各版本之间差在哪
 
@@ -291,9 +291,7 @@ DeepSeek Harness 有一个官方 Exa 提供方 [`@deepseek-ai/dsh-web-search-exa
 
 这个结论是测出来的。开区间在 pnpm 下没问题，而 `dsh plugin add` 用的正是 pnpm。但在 npm 下，它会让最初那 14 个版本中的 13 个报 `ERESOLVE`。如果你用 npm 安装旧版本的本插件时遇到该错误，升级即可，或临时加 `--legacy-peer-deps`。
 
-**能解析**不等于**被测过**：矩阵覆盖的是每条版本线一个版本，外加任何改动了所依赖 seam 的版本——解析侧是上面这 20 个，而表格里是 17 行。`0.1.7-alpha.2`、`0.1.7-rc.1`、`0.1.7-rc.2` 能正常解析、也预期可用，但实际跑过的只有 `0.1.7-alpha.1`。
-
-插件自己的 `dsh.compatibility.dshReleases` 是另一份记录，不影响依赖解析：它逐个完整版本声明本次构建验证过哪些 dsh 发行版，供那些要求精确逐版本证据、不接受范围的目录使用。
+**能解析**不等于**被测过**：上面的表格是 17 行，而这串枚举能在 20 个已发布版本上解析成功。差值就是 `0.1.7-alpha.2`、`0.1.7-rc.1`、`0.1.7-rc.2`——它们能装、也预期可用，但实际跑过的只有 `0.1.7-alpha.1`。
 
 </details>
 

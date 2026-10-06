@@ -6,7 +6,7 @@
 [![GitHub release](https://img.shields.io/github/release/TonyDua/dsh-web-search-exa?label=release)](https://github.com/TonyDua/dsh-web-search-exa/releases/latest)
 [![npm downloads](https://img.shields.io/npm/dm/@tonydua/dsh-web-search-exa)](https://www.npmjs.com/package/@tonydua/dsh-web-search-exa)
 [![License](https://img.shields.io/npm/l/@tonydua/dsh-web-search-exa)](LICENSE)
-[![dsh](https://img.shields.io/badge/dsh-0.1.2--alpha.2%20%E2%80%93%200.1.7--alpha.1-4c6?logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh](https://img.shields.io/badge/dsh%20tested-0.1.2--alpha.2%20%E2%80%93%200.2.1--alpha.1-4c6?logo=deepseek&logoColor=white)](#version-compatibility)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-339933?logo=node.js&logoColor=white)](package.json)
 [![GitHub stars](https://img.shields.io/github/stars/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
 [![GitHub issues](https://img.shields.io/github/issues/TonyDua/dsh-web-search-exa)](https://github.com/TonyDua/dsh-web-search-exa)
@@ -42,7 +42,7 @@ Built with [deepseek-v4-flash](https://api-docs.deepseek.com) inside DeepSeek Ha
 
 Pick one of three. The choice only decides where the code comes from; all three end up the same.
 
-**From npm.** v0.1.4 and later ship the `dsh.bundle` manifest, so the bundle patch inserts the provider row and you do not edit any patch by hand.
+**From npm.** The `dsh.bundle` manifest ships the bundle patch, so the provider row is inserted for you and you do not edit any patch by hand.
 
 ```powershell
 dsh plugin --profile web add @tonydua/dsh-web-search-exa
@@ -251,7 +251,7 @@ Every published dsh version from `0.1.2-alpha.2` to `0.2.1-alpha.1` has been tes
 | `0.2.0-rc.1`, `0.2.0-rc.2` | ✅ | strict npm install beside the host, then a live keyless search |
 | `0.2.1-alpha.1` | ✅ | same, and the only version that needs `@deepseek-ai/cordis@4.0.5-alpha.1` |
 
-Versions from the `0.2.0-rc.1` line onward are also declared one by one under `dsh.compatibility.dshReleases` in `package.json`, which is the precise per-version record a catalog needs; a peer range alone is not installable evidence.
+Versions from the `0.2.0-rc.1` line onward are additionally declared, one full version at a time, under `dsh.compatibility.dshReleases` in `package.json`. That key is catalog metadata: the dsh runtime never reads it, and it does not affect resolution — registries such as [DSH STORE](https://dsh.store/) require an exact per-version record, and a peer range is not installable evidence. The declarations cover `0.2.0-rc.1`, `0.2.0-rc.2`, and `0.2.1-alpha.1`, all `compatible`.
 
 ### What differs across versions
 
@@ -291,9 +291,7 @@ Measured against the real published artifacts:
 
 This was measured, not reasoned. The open-ended range is fine on pnpm, which is what `dsh plugin add` uses. On npm it made 13 of the first 14 versions fail with `ERESOLVE`. If you hit that error installing an older release of this plugin with npm, upgrade, or pass `--legacy-peer-deps` temporarily.
 
-A range that *resolves* is not the same as a version that was *tested*: the matrix covers one release per line plus any release that changed a seam, which is 20 of these on the resolution side but 17 rows in the table above. `0.1.7-alpha.2`, `0.1.7-rc.1`, and `0.1.7-rc.2` resolve and are expected to work, but only `0.1.7-alpha.1` was run.
-
-The plugin's own `dsh.compatibility.dshReleases` map is a separate record and does not affect resolution: it declares, one full version at a time, which dsh releases this build was verified against, for catalogs that require exact per-version evidence instead of a range.
+A range that *resolves* is not the same as a version that was *tested*: the table above is 17 rows, while the enumeration resolves on 20 published releases. `0.1.7-alpha.2`, `0.1.7-rc.1`, and `0.1.7-rc.2` are the difference — they install, and are expected to work, but only `0.1.7-alpha.1` was actually run.
 
 </details>
 
