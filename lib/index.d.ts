@@ -67,6 +67,8 @@ interface ExaMcpSection {
 }
 //#endregion
 //#region src/provider.d.ts
+/** MCP tool names the anonymous path can call. */
+type ExaMcpTool = 'web_search_exa' | 'web_search_advanced_exa';
 /**
  * Fully resolved options the provider serves one search with. Produced by
  * {@link resolveOptions} from the current Settings section, so every field is
@@ -83,6 +85,7 @@ interface ExaSearchProviderOptions {
   readonly baseURL: string;
   readonly apiURL?: string | undefined;
   readonly mcpURL: string;
+  readonly mcpTool: ExaMcpTool;
   readonly searchType: ExaSearchType;
   readonly numResults?: number | undefined;
   readonly highlightsPerResult: number;
@@ -96,6 +99,7 @@ interface ExaSearchProviderConfig {
   /** @deprecated Use `baseURL`; this full endpoint remains supported for compatibility. */
   apiURL?: string;
   mcpURL?: string;
+  mcpTool?: ExaMcpTool;
   searchType?: ExaSearchType;
   numResults?: number;
   highlightsPerResult?: number;
@@ -153,6 +157,18 @@ export declare class ExaTransientError extends WebError {
  */
 export declare class ExaRateLimitError extends WebError {
   constructor(message: string);
+}
+/**
+ * An anonymous response body that exceeded {@link MAX_MCP_RESPONSE_BYTES}.
+ *
+ * Extends {@link ExaTransientError} because the endpoint, not the caller's
+ * configuration, produced it: a body this size is a bad day on Exa's side, and
+ * the breaker should get to count it.
+ */
+export declare class ExaResponseTooLargeError extends ExaTransientError {
+  /** The number of bytes observed, or `undefined` when the server declared the size. */
+  readonly observedBytes: number | undefined;
+  constructor(limit: number, observedBytes?: number);
 }
 /**
  * Consecutive-transient-failure breaker for the keyless path.
@@ -242,16 +258,37 @@ export declare const PROVIDER_ID = "exa";
 export declare const DEFAULT_BASE_URL = "https://api.exa.ai";
 /** Legacy full REST endpoint; `baseURL` is the canonical dsh-compatible option. */
 export declare const DEFAULT_API_URL = "https://api.exa.ai/search";
-/** Exa hosted MCP endpoint; the anonymous fallback path. */
-export declare const DEFAULT_MCP_URL = "https://mcp.exa.ai/mcp";
+/**
+ * Exa hosted MCP endpoint; the anonymous fallback path.
+ *
+ * The `tools` query is part of the default because `web_search_advanced_exa`
+ * is not servable without it — a request naming it against the bare endpoint
+ * fails with `MCP error -32602: Tool web_search_advanced_exa not found`.
+ * A configured `mcpURL` that omits `tools` gets the query spliced in at request
+ * time, so existing configurations keep working.
+ */
+export declare const DEFAULT_MCP_URL = "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa";
 /** Environment variable consulted when no literal `apiKey` is configured. */
 export declare const DEFAULT_API_KEY_ENV = "EXA_API_KEY";
 /** Default retrieval mode for the REST path: let Exa pick. */
 export declare const DEFAULT_SEARCH_TYPE = "auto";
 /** Default number of highlight sentences requested per result (REST path). */
 export declare const DEFAULT_HIGHLIGHTS_PER_RESULT = 1;
-/** MCP tool name for plain web search on Exa's hosted server. */
+/** MCP tool name for plain web search on Exa's hosted server (text-blob output). */
 export declare const MCP_TOOL = "web_search_exa";
+/** MCP tool whose text content is a sanitized structured search response. */
+export declare const MCP_TOOL_ADVANCED = "web_search_advanced_exa";
+/** The tool the anonymous path calls by default. */
+export declare const DEFAULT_MCP_TOOL = "web_search_advanced_exa";
+/** Query parameter enabling both MCP tools when a configured URL omits it. */
+export declare const MCP_TOOLS_QUERY = "tools=web_search_exa,web_search_advanced_exa";
+/**
+ * Reject anonymous MCP responses larger than this.
+ *
+ * Structured results are kilobytes; anything past this is a malformed or
+ * hostile body and parsing it would only burn memory before failing anyway.
+ */
+export declare const MAX_MCP_RESPONSE_BYTES: number;
 /**
  * Attribution header sent on anonymous MCP requests. This is the only signal
  * Exa's public endpoint receives about the caller, so it is deliberately a
@@ -295,6 +332,13 @@ declare const Config: z<Schemastery.ObjectS<{
   apiURL: z<string, string>;
   /** Exa hosted MCP endpoint, used by the anonymous fallback. */
   mcpURL: z<string, string>;
+  /**
+   * MCP tool the anonymous path calls. `web_search_advanced_exa` returns a
+   * sanitized structured JSON response; `web_search_exa` returns the
+   * `Title:`-section text blob. The structured tool is the default because it
+   * needs no text parsing, and the text path stays available as a fallback.
+   */
+  mcpTool: z<"web_search_exa" | "web_search_advanced_exa", "web_search_exa" | "web_search_advanced_exa">;
   /** REST retrieval mode: `auto`, `keyword`, or `neural`. */
   searchType: z<"auto" | "keyword" | "neural", "auto" | "keyword" | "neural">;
   /** Default result count when the request carries no `maxResults`. */
@@ -324,6 +368,13 @@ declare const Config: z<Schemastery.ObjectS<{
   apiURL: z<string, string>;
   /** Exa hosted MCP endpoint, used by the anonymous fallback. */
   mcpURL: z<string, string>;
+  /**
+   * MCP tool the anonymous path calls. `web_search_advanced_exa` returns a
+   * sanitized structured JSON response; `web_search_exa` returns the
+   * `Title:`-section text blob. The structured tool is the default because it
+   * needs no text parsing, and the text path stays available as a fallback.
+   */
+  mcpTool: z<"web_search_exa" | "web_search_advanced_exa", "web_search_exa" | "web_search_advanced_exa">;
   /** REST retrieval mode: `auto`, `keyword`, or `neural`. */
   searchType: z<"auto" | "keyword" | "neural", "auto" | "keyword" | "neural">;
   /** Default result count when the request carries no `maxResults`. */
@@ -383,4 +434,4 @@ declare function installSettingsSection(settings: SettingsServiceLike, owner: un
  */
 export declare function apply(ctx: Context, config: ExaSearchProviderConfig): void;
 //#endregion
-export { Config, type ExaApiKeyResolver, type ExaKeyEnvironment, type ExaMcpSection, type ExaOptionsResolver, type ExaRestResponse, type ExaRestResult, type ExaSearchProviderConfig, type ExaSearchProviderOptions, type ExaSearchType, type McpContentItem, type McpJsonRpcError, type McpPayload, type McpToolResult, installSettingsSection };
+export { Config, type ExaApiKeyResolver, type ExaKeyEnvironment, type ExaMcpSection, type ExaMcpTool, type ExaOptionsResolver, type ExaRestResponse, type ExaRestResult, type ExaSearchProviderConfig, type ExaSearchProviderOptions, type ExaSearchType, type McpContentItem, type McpJsonRpcError, type McpPayload, type McpToolResult, installSettingsSection };

@@ -21,8 +21,16 @@ export const DEFAULT_BASE_URL = 'https://api.exa.ai';
 /** Legacy full REST endpoint; `baseURL` is the canonical dsh-compatible option. */
 export const DEFAULT_API_URL = `${DEFAULT_BASE_URL}/search`;
 
-/** Exa hosted MCP endpoint; the anonymous fallback path. */
-export const DEFAULT_MCP_URL = 'https://mcp.exa.ai/mcp';
+/**
+ * Exa hosted MCP endpoint; the anonymous fallback path.
+ *
+ * The `tools` query is part of the default because `web_search_advanced_exa`
+ * is not servable without it — a request naming it against the bare endpoint
+ * fails with `MCP error -32602: Tool web_search_advanced_exa not found`.
+ * A configured `mcpURL` that omits `tools` gets the query spliced in at request
+ * time, so existing configurations keep working.
+ */
+export const DEFAULT_MCP_URL = 'https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa';
 
 /** Environment variable consulted when no literal `apiKey` is configured. */
 export const DEFAULT_API_KEY_ENV = 'EXA_API_KEY';
@@ -33,8 +41,25 @@ export const DEFAULT_SEARCH_TYPE = 'auto';
 /** Default number of highlight sentences requested per result (REST path). */
 export const DEFAULT_HIGHLIGHTS_PER_RESULT = 1;
 
-/** MCP tool name for plain web search on Exa's hosted server. */
+/** MCP tool name for plain web search on Exa's hosted server (text-blob output). */
 export const MCP_TOOL = 'web_search_exa';
+
+/** MCP tool whose text content is a sanitized structured search response. */
+export const MCP_TOOL_ADVANCED = 'web_search_advanced_exa';
+
+/** The tool the anonymous path calls by default. */
+export const DEFAULT_MCP_TOOL = MCP_TOOL_ADVANCED;
+
+/** Query parameter enabling both MCP tools when a configured URL omits it. */
+export const MCP_TOOLS_QUERY = 'tools=web_search_exa,web_search_advanced_exa';
+
+/**
+ * Reject anonymous MCP responses larger than this.
+ *
+ * Structured results are kilobytes; anything past this is a malformed or
+ * hostile body and parsing it would only burn memory before failing anyway.
+ */
+export const MAX_MCP_RESPONSE_BYTES = 256 * 1024;
 
 /**
  * Attribution header sent on anonymous MCP requests. This is the only signal

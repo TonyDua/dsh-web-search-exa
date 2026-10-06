@@ -32,6 +32,7 @@ import {
 	DEFAULT_API_KEY_ENV,
 	DEFAULT_BASE_URL,
 	DEFAULT_HIGHLIGHTS_PER_RESULT,
+	DEFAULT_MCP_TOOL,
 	DEFAULT_MCP_URL,
 	DEFAULT_PROVIDER_ID,
 	DEFAULT_SEARCH_TYPE,
@@ -46,6 +47,7 @@ export {
 	DEFAULT_BREAKER_THRESHOLD,
 	ExaAvailabilityBreaker,
 	ExaRateLimitError,
+	ExaResponseTooLargeError,
 	ExaSearchProvider,
 	ExaTransientError,
 	resolveApiKey,
@@ -55,6 +57,7 @@ export {
 export type {
 	ExaApiKeyResolver,
 	ExaKeyEnvironment,
+	ExaMcpTool,
 	ExaOptionsResolver,
 	ExaSearchProviderConfig,
 	ExaSearchProviderOptions,
@@ -93,6 +96,13 @@ const Config = z.object({
 	apiURL: z.string(),
 	/** Exa hosted MCP endpoint, used by the anonymous fallback. */
 	mcpURL: z.string().default(DEFAULT_MCP_URL),
+	/**
+	 * MCP tool the anonymous path calls. `web_search_advanced_exa` returns a
+	 * sanitized structured JSON response; `web_search_exa` returns the
+	 * `Title:`-section text blob. The structured tool is the default because it
+	 * needs no text parsing, and the text path stays available as a fallback.
+	 */
+	mcpTool: z.union(['web_search_exa', 'web_search_advanced_exa']).default(DEFAULT_MCP_TOOL),
 	/** REST retrieval mode: `auto`, `keyword`, or `neural`. */
 	searchType: z.union(['auto', 'keyword', 'neural']).default(DEFAULT_SEARCH_TYPE),
 	/** Default result count when the request carries no `maxResults`. */

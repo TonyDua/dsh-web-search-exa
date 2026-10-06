@@ -19,15 +19,20 @@ import {
 	DEFAULT_API_KEY_ENV,
 	DEFAULT_BASE_URL,
 	DEFAULT_HIGHLIGHTS_PER_RESULT,
+	DEFAULT_MCP_TOOL,
 	DEFAULT_MCP_URL,
 	DEFAULT_PROVIDER_ID,
 	DEFAULT_SEARCH_TYPE,
+	MAX_MCP_RESPONSE_BYTES,
 	MAX_SNIPPET_CHARS,
 	MCP_SOURCE,
-	MCP_TOOL,
+	MCP_TOOLS_QUERY,
 	USER_AGENT,
 } from './constants.ts';
-import type { ExaMcpSection, ExaRestResponse, ExaSearchType, McpPayload } from './types.ts';
+import type { ExaAdvancedResponse, ExaAdvancedResult, ExaMcpSection, ExaRestResponse, ExaSearchType, McpPayload } from './types.ts';
+
+/** MCP tool names the anonymous path can call. */
+export type ExaMcpTool = 'web_search_exa' | 'web_search_advanced_exa';
 
 /**
  * Fully resolved options the provider serves one search with. Produced by
@@ -45,6 +50,7 @@ export interface ExaSearchProviderOptions {
 	readonly baseURL: string;
 	readonly apiURL?: string | undefined;
 	readonly mcpURL: string;
+	readonly mcpTool: ExaMcpTool;
 	readonly searchType: ExaSearchType;
 	readonly numResults?: number | undefined;
 	readonly highlightsPerResult: number;
@@ -59,6 +65,7 @@ export interface ExaSearchProviderConfig {
 	/** @deprecated Use `baseURL`; this full endpoint remains supported for compatibility. */
 	apiURL?: string;
 	mcpURL?: string;
+	mcpTool?: ExaMcpTool;
 	searchType?: ExaSearchType;
 	numResults?: number;
 	highlightsPerResult?: number;
@@ -146,6 +153,146 @@ function mapRestResult(result: {
 }
 
 // ── Anonymous MCP path (no API key) ─────────────────────────────────────────
+
+/**
+ * Read an anonymous response body while refusing to buffer more than `limit`
+ * bytes.
+ *
+ * The cap has to be enforced *while reading*, not after: `await
+ * response.text()` materializes the whole body first, so a size check that
+ * follows it protects nothing — the memory has already been spent, and
+ * `new TextEncoder().encode(text)` spends a second copy of it just to measure
+ * the first. This helper instead:
+ *
+ * 1. rejects immediately when the server declares an over-limit
+ *    `content-length`, so the body is never requested;
+ * 2. otherwise reads the stream chunk by chunk, aborting the transfer as soon
+ *    as the running byte count passes `limit`.
+ *
+ * The limit is a memory boundary on the keyless path (a shared, unauthenticated
+ * endpoint), not a judgement about the result set: the structured tool returns
+ * whole-page text for every hit, so a large-but-legitimate response is possible
+ * and is reported as a transient failure rather than a silent empty result.
+ *
+ * @param response - the ok response whose body is to be read.
+ * @param limit - the maximum number of bytes to buffer.
+ * @returns the decoded body text.
+ * @throws {ExaResponseTooLargeError} when the body is, or grows, past `limit`.
+ */
+async function readBoundedBody(response: Response, limit: number): Promise<string> {
+	const declared = response.headers.get('content-length');
+	if (declared !== null) {
+		const declaredBytes = Number(declared);
+		if (Number.isFinite(declaredBytes) && declaredBytes > limit) {
+			await response.body?.cancel().catch(() => {});
+			throw new ExaResponseTooLargeError(limit, declaredBytes);
+		}
+	}
+	const body = response.body;
+	if (body === null) return await response.text();
+	const reader = body.getReader();
+	const chunks: Uint8Array[] = [];
+	let received = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			received += value.byteLength;
+			if (received > limit) {
+				await reader.cancel().catch(() => {});
+				throw new ExaResponseTooLargeError(limit, received);
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	const merged = new Uint8Array(received);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return new TextDecoder().decode(merged);
+}
+
+/**
+ * Return the request URL for an anonymous advanced-tool search: when the
+ * configured MCP URL carries no `tools` parameter, splice in the query that
+ * enables both tools — the advanced tool is not servable otherwise. An existing
+ * query string is preserved.
+ *
+ * @param baseURL - the configured MCP endpoint.
+ * @returns the request URL with a non-empty `tools` query present.
+ */
+function endpointFor(baseURL: string): string {
+	const queryIndex = baseURL.indexOf('?');
+	if (queryIndex >= 0) {
+		const tools = new URLSearchParams(baseURL.slice(queryIndex + 1)).get('tools');
+		if (tools != null && tools.length > 0) return baseURL;
+		return `${baseURL}&${MCP_TOOLS_QUERY}`;
+	}
+	return `${baseURL}?${MCP_TOOLS_QUERY}`;
+}
+
+/**
+ * Map one sanitized advanced-tool result to a normalized source, or `undefined`
+ * when it has no portable snippet. The advanced tool returns the REST result
+ * vocabulary as JSON, so this mirrors {@link mapRestResult} — including its rule
+ * that a snippet must be a real highlight, never the long-form `text` field,
+ * because a fabricated snippet would make the seam lie.
+ *
+ * @param result - one structured entry from the sanitized response.
+ * @returns a normalized source, or `undefined` when the entry is unusable.
+ */
+function mapAdvancedResult(
+	result: unknown,
+): { url: string; title?: string; snippet: string; publishedAt?: string } | undefined {
+	if (typeof result !== 'object' || result === null) return undefined;
+	const entry = result as ExaAdvancedResult;
+	if (typeof entry.url !== 'string' || entry.url.length === 0) return undefined;
+	const highlights = Array.isArray(entry.highlights) ? (entry.highlights as readonly unknown[]) : undefined;
+	const snippet = highlights?.find(
+		(highlight): highlight is string => typeof highlight === 'string' && highlight.trim().length > 0,
+	);
+	if (snippet === undefined) return undefined;
+	const title = typeof entry.title === 'string' ? entry.title : undefined;
+	const publishedDate = typeof entry.publishedDate === 'string' ? entry.publishedDate : undefined;
+	return {
+		url: entry.url,
+		...(title != null && title.length > 0 ? { title } : {}),
+		snippet,
+		...(publishedDate != null && publishedDate.length > 0 ? { publishedAt: publishedDate } : {}),
+	};
+}
+
+/**
+ * Extract sources from a successful advanced-tool payload: the first text item
+ * is the sanitized search response JSON, in the REST envelope shape
+ * (`{ results: [...] }`).
+ *
+ * @param payload - the parsed JSON-RPC payload.
+ * @returns the normalized sources, or `null` when the body is not the expected
+ * shape — the caller then falls back to `Title:`-section parsing, so a future
+ * change to the tool's output degrades instead of breaking.
+ */
+function parseAdvancedPayload(payload: McpPayload): WebSearchResult['sources'][number][] | null {
+	const content = payload?.result?.content;
+	if (!Array.isArray(content)) return null;
+	const text = content.find((item) => typeof item?.text === 'string')?.text;
+	if (text === undefined) return null;
+	let parsed: ExaAdvancedResponse;
+	try {
+		parsed = JSON.parse(text) as ExaAdvancedResponse;
+	} catch {
+		return null;
+	}
+	if (typeof parsed !== 'object' || parsed === null) return null;
+	// An absent `results` key is a valid empty search, not a shape mismatch.
+	if (parsed.results === undefined) return [];
+	if (!Array.isArray(parsed.results)) return null;
+	return parsed.results.map(mapAdvancedResult).filter((source) => source !== undefined);
+}
 
 /**
  * Parse an SSE (`text/event-stream`) response body into its first `data:`
@@ -300,6 +447,27 @@ export class ExaRateLimitError extends WebError {
 }
 
 /**
+ * An anonymous response body that exceeded {@link MAX_MCP_RESPONSE_BYTES}.
+ *
+ * Extends {@link ExaTransientError} because the endpoint, not the caller's
+ * configuration, produced it: a body this size is a bad day on Exa's side, and
+ * the breaker should get to count it.
+ */
+export class ExaResponseTooLargeError extends ExaTransientError {
+	/** The number of bytes observed, or `undefined` when the server declared the size. */
+	readonly observedBytes: number | undefined;
+
+	constructor(limit: number, observedBytes?: number) {
+		super(
+			`Exa anonymous MCP response exceeded ${limit} bytes` +
+				(observedBytes === undefined ? '' : ` (received ${observedBytes})`),
+		);
+		this.name = 'ExaResponseTooLargeError';
+		this.observedBytes = observedBytes;
+	}
+}
+
+/**
  * Consecutive-transient-failure breaker for the keyless path.
  *
  * The public MCP endpoint is best-effort: when it is throttling or down, every
@@ -363,6 +531,7 @@ export function resolveOptions(section: ExaSearchProviderConfig): ExaSearchProvi
 		baseURL,
 		apiURL: section.apiURL ?? `${baseURL.replace(/\/+$/, '')}/search`,
 		mcpURL: section.mcpURL ?? DEFAULT_MCP_URL,
+		mcpTool: section.mcpTool ?? DEFAULT_MCP_TOOL,
 		searchType: section.searchType ?? DEFAULT_SEARCH_TYPE,
 		numResults: section.numResults,
 		highlightsPerResult: section.highlightsPerResult ?? DEFAULT_HIGHLIGHTS_PER_RESULT,
@@ -531,12 +700,31 @@ export class ExaSearchProvider implements WebSearchProvider {
 		signal?: AbortSignal,
 	): Promise<WebSearchResult> {
 		throwIfAborted(signal);
-		const args: { query: string; numResults?: number } = { query: request.query };
+		const tool = options.mcpTool;
+		const isAdvanced = tool === 'web_search_advanced_exa';
+		const args: Record<string, unknown> = { query: request.query };
 		const numResults = request.maxResults ?? options.numResults;
 		if (numResults !== undefined) args.numResults = numResults;
+		if (isAdvanced) {
+			// The highlight request is not optional in practice: without it the
+			// live endpoint returns text-only entries, every source lacks a
+			// portable snippet, and the result is empty.
+			//
+			// `type` is deliberately NOT forwarded, even though the advanced tool
+			// accepts one. The two vocabularies do not overlap — `searchType` is
+			// the REST enum (`auto` | `keyword` | `neural`) while the tool's enum
+			// is `auto` | `fast` | `instant` — so forwarding a configured
+			// `keyword`/`neural` makes the tool fail argument validation and the
+			// whole search with it (MCP error -32602). Omitting the argument
+			// leaves the endpoint on its own default, which is what `auto` asks
+			// for anyway: a call with `type: 'auto'` returns a byte-identical
+			// response, so forwarding it would buy nothing and risk everything.
+			args.enableHighlights = true;
+			args.highlightsNumSentences = options.highlightsPerResult ?? DEFAULT_HIGHLIGHTS_PER_RESULT;
+		}
 		let response: Response;
 		try {
-			response = await fetch(options.mcpURL, {
+			response = await fetch(isAdvanced ? endpointFor(options.mcpURL) : options.mcpURL, {
 				method: 'POST',
 				redirect: 'error',
 				headers: {
@@ -548,7 +736,7 @@ export class ExaSearchProvider implements WebSearchProvider {
 					jsonrpc: '2.0',
 					id: Math.random().toString(36).slice(2),
 					method: 'tools/call',
-					params: { name: MCP_TOOL, arguments: args },
+					params: { name: tool, arguments: args },
 				}),
 				...(signal !== undefined ? { signal } : {}),
 			});
@@ -570,15 +758,19 @@ export class ExaSearchProvider implements WebSearchProvider {
 			}
 			throw new WebError(`Exa anonymous MCP error (HTTP ${response.status})`, 'WEB_PROVIDER_ERROR');
 		}
-		let payload: McpPayload | null;
+		let text: string;
 		try {
-			payload = parseSsePayload(await response.text());
+			text = await readBoundedBody(response, MAX_MCP_RESPONSE_BYTES);
 		} catch (error) {
 			if (signal?.aborted === true || isAbortError(error)) {
 				throw new WebError('Exa anonymous search aborted', 'WEB_ABORTED', { cause: signal?.reason ?? error });
 			}
+			// A too-large body is already the error we want to report; wrapping it
+			// would bury the size detail inside a generic transport message.
+			if (error instanceof ExaResponseTooLargeError) throw error;
 			throw new ExaTransientError(`Exa returned an unprocessable response body: ${String(error)}`, error);
 		}
+		const payload = parseSsePayload(text);
 		if (payload === null) {
 			throw new ExaTransientError('Exa anonymous MCP returned an unprocessable response body');
 		}
@@ -592,8 +784,12 @@ export class ExaSearchProvider implements WebSearchProvider {
 			const detail = collectMcpText(payload).join('\n').trim();
 			throw new WebError(`Exa MCP tool error${detail.length > 0 ? `: ${detail}` : ''}`, 'WEB_PROVIDER_ERROR');
 		}
-		const sections = splitExaSections(collectMcpText(payload).join('\n\n'));
-		const sources = mapMcpSections(sections);
+		// Structured results when the advanced tool returned its expected shape;
+		// otherwise fall back to `Title:` sections so a change in the tool's
+		// output degrades instead of returning nothing.
+		const structured = isAdvanced ? parseAdvancedPayload(payload) : null;
+		if (structured !== null) return { sources: structured, truncated: false };
+		const sources = mapMcpSections(splitExaSections(collectMcpText(payload).join('\n\n')));
 		return { sources, truncated: false };
 	}
 }
